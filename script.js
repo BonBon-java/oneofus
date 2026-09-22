@@ -54,66 +54,14 @@ document.querySelectorAll('[data-toast]').forEach((button) => {
   });
 });
 
-const walletButton = document.querySelector('#wallet-connect');
-const walletLabel = walletButton?.querySelector('.wallet-label');
-const {
-  TronWalletController,
-  createTronLinkDappUrl,
-  isMobileBrowser,
-  shortenAddress,
-} = window.OneOfUsWallet;
+const getInButton = document.querySelector('#get-in-button');
+const paymentModal = document.querySelector('#get-in-modal');
 
-function renderWalletState(state) {
-  if (!walletButton || !walletLabel) return;
-
-  const connected = state.status === 'connected' && state.address;
-  walletLabel.textContent = connected ? shortenAddress(state.address) : 'Connect Wallet';
-  walletButton.classList.toggle('connected', Boolean(connected));
-  walletButton.dataset.network = state.network?.id || '';
-  walletButton.title = connected ? `${state.address} · ${state.network.name}` : 'Connect a TRON wallet';
-  walletButton.setAttribute(
-    'aria-label',
-    connected ? `TRON wallet ${state.address}, ${state.network.name}` : 'Connect TRON wallet',
-  );
+if (getInButton && paymentModal) {
+  new window.OneOfUsPaymentModal.GetInModal({
+    rootElement: paymentModal,
+    triggerElement: getInButton,
+    config: window.ONEOFUS_PAYMENT_CONFIG,
+    showToast,
+  });
 }
-
-const wallet = new TronWalletController({
-  windowObject: window,
-  onStateChange: renderWalletState,
-});
-
-function getWalletErrorMessage(error) {
-  const messages = {
-    connection_rejected: 'Wallet connection was cancelled.',
-    request_pending: 'A TronLink request is already open.',
-    wallet_locked: 'Unlock TronLink and try again.',
-    disconnected: 'TronLink disconnected.',
-    connection_failed: 'Could not connect to TronLink.',
-  };
-
-  return messages[error?.code] || 'Could not connect to TronLink.';
-}
-
-walletButton?.addEventListener('click', async () => {
-  walletButton.disabled = true;
-  walletButton.setAttribute('aria-busy', 'true');
-
-  try {
-    const state = await wallet.connect();
-    showToast(`Connected · ${state.network.name}`);
-  } catch (error) {
-    if (error?.code === 'wallet_not_found' && isMobileBrowser(navigator)) {
-      showToast('Opening ONEOFUS in TronLink…');
-      window.location.href = createTronLinkDappUrl(window.location.href);
-    } else if (error?.code === 'wallet_not_found') {
-      showToast('Install or enable TronLink to connect.');
-    } else {
-      showToast(getWalletErrorMessage(error));
-    }
-  } finally {
-    walletButton.disabled = false;
-    walletButton.removeAttribute('aria-busy');
-  }
-});
-
-wallet.restore();

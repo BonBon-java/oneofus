@@ -32,7 +32,7 @@ jobs:
       - name: Prepare static site
         run: |
           mkdir -p _site/assets
-          cp index.html styles.css script.js countdown.js wallet.js favicon.svg .nojekyll _site/
+          cp index.html styles.css script.js countdown.js payment-config.js payment-sources.js payment-session.js payment-modal.js favicon.svg .nojekyll _site/
           cp assets/earth-hero-opt.jpg _site/assets/
           cp assets/winner-earth-opt.jpg _site/assets/
           cp assets/journey-cool-opt.jpg _site/assets/

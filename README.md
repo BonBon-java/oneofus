@@ -14,9 +14,10 @@ Then open <http://127.0.0.1:4174/>.
 
 ## Checks
 
-The landing page uses the browser-provided TronLink provider and does not
-store wallet secrets or submit transactions. The draw countdown is calculated
-from the next `00:00 UTC` on every update.
+The current payment flow is UI-only. It does not contact exchanges, submit
+transactions, or verify payments. `payment-config.js` keeps the published site
+in an explicit demo mode with an intentionally invalid recipient address.
+The draw countdown is calculated from the next `00:00 UTC` on every update.
 
 Run the dependency-free logic tests with:
 
