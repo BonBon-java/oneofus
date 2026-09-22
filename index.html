@@ -32,7 +32,7 @@
       <nav class="nav-links" id="primary-nav" aria-label="Primary navigation">
         <a href="#how-it-works">How it works</a><a href="#winners">Winners</a><a href="#rules">Rules</a><a href="#transparency">Transparency</a><a href="#telegram">Telegram</a>
       </nav>
-      <button class="wallet-btn" type="button" data-toast="Wallet connection is coming soon"><span class="wallet-mark" aria-hidden="true">▱</span> Connect Wallet</button>
+      <button class="wallet-btn" id="wallet-connect" type="button"><span class="wallet-mark" aria-hidden="true">▱</span><span class="wallet-label">Connect Wallet</span></button>
       <button class="menu-toggle" type="button" aria-label="Open menu" aria-controls="primary-nav" aria-expanded="false"><span></span><span></span></button>
     </header>
 
@@ -45,7 +45,7 @@
           <p class="hero-tagline">ONE DOLLAR.<br />ONE CHANCE.</p>
           <article class="pool-card">
             <p class="label">CURRENT POOL</p><strong>$48,291</strong>
-            <p class="draw"><span class="pulse-dot"></span> DRAW IN <span id="countdown">04:32:18</span></p>
+            <p class="draw"><span class="pulse-dot"></span> DRAW IN <span id="countdown">--:--:--</span></p>
             <button class="primary-btn" type="button" data-toast="Connect your wallet to get in"><span aria-hidden="true">＋</span> GET IN <b aria-hidden="true">→</b></button>
             <p class="ticket-note">1 USDT = 1 TICKET</p>
           </article>
@@ -64,6 +64,8 @@
 
     <footer class="site-footer wrap" id="transparency"><div class="footer-top"><a class="brand" href="#top">ONEOFUS.</a><nav class="footer-nav" aria-label="Footer navigation"><a href="#how-it-works">How it works</a><a href="#winners">Winners</a><a href="#rules">Rules</a><a href="#transparency">Transparency</a><a id="telegram" href="#telegram">Telegram</a></nav><div class="socials" aria-label="Social links"><a href="#telegram" aria-label="Telegram">➤</a><a id="x" href="#x" aria-label="X">𝕏</a><a id="discord" href="#discord" aria-label="Discord">♣</a></div></div><div class="footer-bottom"><span>© 2026 Oneofus. All rights reserved.</span><span>Not financial advice. Play responsibly.</span></div></footer>
     <div class="toast" role="status" aria-live="polite"></div>
+    <script src="countdown.js"></script>
+    <script src="wallet.js"></script>
     <script src="script.js"></script>
   </body>
 </html>

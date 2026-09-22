@@ -23,8 +23,9 @@ a:focus-visible, button:focus-visible { outline: 2px solid #fff; outline-offset:
 .nav-links { display: flex; flex: 1; justify-content: center; gap: 38px; font-size: 12px; color: #eef1f4; }
 .nav-links a, .footer-nav a { opacity: 0.9; transition: opacity 0.2s; }
 .nav-links a:hover, .footer-nav a:hover { opacity: 0.55; }
-.wallet-btn { flex: 0 0 auto; padding: 11px 19px; border: 1px solid rgba(255, 255, 255, 0.55); border-radius: 999px; background: transparent; color: var(--ink); font-size: 12px; white-space: nowrap; transition: color 0.2s, background 0.2s; }
+.wallet-btn { display: inline-flex; flex: 0 0 auto; align-items: center; min-width: 130px; justify-content: center; padding: 11px 19px; border: 1px solid rgba(255, 255, 255, 0.55); border-radius: 999px; background: transparent; color: var(--ink); font-size: 12px; white-space: nowrap; transition: color 0.2s, background 0.2s; }
 .wallet-btn:hover { background: #fff; color: #05101a; }
+.wallet-btn:disabled { cursor: wait; opacity: 0.72; }
 .wallet-mark { margin-right: 7px; font-size: 18px; vertical-align: -2px; }
 .menu-toggle { display: none; border: 0; background: none; color: #fff; }
 
@@ -147,11 +148,12 @@ a:focus-visible, button:focus-visible { outline: 2px solid #fff; outline-offset:
   .wrap { width: calc(100% - 32px); }
   .site-header { height: 70px; padding-inline: 18px; }
   .site-header .brand { font-size: 16px; }
-  .wallet-btn { display: none; }
+  .wallet-btn { min-width: 0; margin-left: auto; padding: 9px 12px; font-size: 10px; }
+  .wallet-mark { margin-right: 5px; font-size: 15px; }
   .nav-links { position: absolute; top: 62px; right: 16px; left: 16px; display: none; flex-direction: column; gap: 0; padding: 8px 0; border: 1px solid var(--line); border-radius: 12px; background: rgba(3, 12, 20, 0.96); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
   .nav-links.open { display: flex; }
   .nav-links a { padding: 13px 16px; }
-  .menu-toggle { display: flex; flex-direction: column; gap: 5px; margin-left: auto; padding: 10px 4px; }
+  .menu-toggle { display: flex; flex-direction: column; gap: 5px; margin-left: 0; padding: 10px 4px; }
   .menu-toggle span { display: block; width: 22px; height: 1px; background: #fff; }
   .hero { min-height: 0; padding-top: 120px; padding-bottom: 30px; }
   .hero-image { height: 820px; background-position: center 4%; }

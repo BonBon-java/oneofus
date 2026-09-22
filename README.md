@@ -12,6 +12,18 @@ python3 -m http.server 4174
 
 Then open <http://127.0.0.1:4174/>.
 
+## Checks
+
+The landing page uses the browser-provided TronLink provider and does not
+store wallet secrets or submit transactions. The draw countdown is calculated
+from the next `00:00 UTC` on every update.
+
+Run the dependency-free logic tests with:
+
+```sh
+node --test tests/*.test.js
+```
+
 ## GitHub Pages
 
 The workflow in `.github/workflows/pages.yml` packages the production HTML,
