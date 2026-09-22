@@ -1,0 +1,47 @@
+# Environment files and local secrets
+.env
+.env.*
+!.env.example
+*.local
+config.local.*
+credentials*.json
+service-account*.json
+.npmrc
+.pypirc
+.netrc
+.aws/
+.ssh/
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.tfvars
+*.tfstate
+*.tfstate.*
+*.seed
+*seed-phrase*
+
+# Dependencies and generated output
+node_modules/
+dist/
+build/
+_site/
+coverage/
+.cache/
+.parcel-cache/
+.vite/
+*.log
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+*~
