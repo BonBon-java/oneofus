@@ -8,6 +8,7 @@ const { deployMockUsdt } = require('./deploy-mock-usdt.js');
 const { USDT_TOKEN_ADDRESS } = require('../payment-domain.js');
 const root = path.join(__dirname, '..');
 const runtime = path.join(root, '.local-integration');
+const hardhatRoot = path.join(__dirname, 'hardhat');
 const pidFile = path.join(runtime, 'hardhat.pid');
 const run = (command, args, env) => {
   const result = spawnSync(command, args, { cwd: root, stdio: 'inherit', env: env ? { ...process.env, ...env } : process.env });
@@ -22,7 +23,7 @@ async function start() {
   if (!(await rpcReady())) {
     fs.mkdirSync(runtime, { recursive: true });
     const log = fs.openSync(path.join(runtime, 'hardhat.log'), 'a');
-    const child = spawn(process.platform === 'win32' ? 'npx.cmd' : 'npx', ['hardhat', 'node', '--config', 'scripts/hardhat.integration.config.js'], { cwd: root, detached: true, stdio: ['ignore', log, log] });
+    const child = spawn(process.platform === 'win32' ? 'npx.cmd' : 'npx', ['hardhat', 'node', '--config', 'hardhat.integration.config.mjs'], { cwd: hardhatRoot, detached: true, stdio: ['ignore', log, log] });
     child.unref(); fs.writeFileSync(pidFile, String(child.pid));
     for (let attempt = 0; attempt < 120 && !(await rpcReady()); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 250));
   }
