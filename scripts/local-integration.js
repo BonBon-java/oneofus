@@ -24,7 +24,7 @@ async function start() {
     const log = fs.openSync(path.join(runtime, 'hardhat.log'), 'a');
     const child = spawn(process.platform === 'win32' ? 'npx.cmd' : 'npx', ['hardhat', 'node', '--config', 'scripts/hardhat.integration.config.js'], { cwd: root, detached: true, stdio: ['ignore', log, log] });
     child.unref(); fs.writeFileSync(pidFile, String(child.pid));
-    for (let attempt = 0; attempt < 40 && !(await rpcReady()); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 250));
+    for (let attempt = 0; attempt < 120 && !(await rpcReady()); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 250));
   }
   if (!(await rpcReady())) throw new Error('Hardhat local chain did not become ready on http://127.0.0.1:8545.');
   const envFile = path.join(root, '.env.integration.local');
