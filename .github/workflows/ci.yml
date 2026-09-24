@@ -15,7 +15,7 @@ permissions:
 jobs:
   node-tests:
     name: Node and backend tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
       - name: Check out repository
@@ -35,7 +35,7 @@ jobs:
 
   browser-tests:
     name: Browser regressions
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - name: Check out repository
@@ -67,7 +67,7 @@ jobs:
 
   payment-integration:
     name: PostgreSQL, Hardhat and payment E2E
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
       - name: Check out repository
