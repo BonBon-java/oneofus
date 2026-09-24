@@ -43,16 +43,17 @@
           <h1 id="hero-title">ONEOFUS<span>.</span></h1>
           <p class="hero-tagline">ONE DOLLAR.<br />ONE CHANCE.</p>
           <article class="pool-card">
-            <p class="label">CURRENT POOL</p><strong>$48,291</strong>
+            <p class="label">CURRENT POOL</p><strong data-current-pool>—</strong>
+            <p class="pool-rollover" data-pool-rollover hidden></p>
             <p class="draw"><span class="pulse-dot"></span> DRAW IN <span id="countdown">--:--:--</span></p>
             <button class="primary-btn get-in-btn" id="get-in-button" type="button"><span aria-hidden="true">＋</span> GET IN <b aria-hidden="true">→</b></button>
             <p class="ticket-note">1 USDT = 1 TICKET</p>
           </article>
         </div>
         <div class="stats-grid wrap" id="winners">
-          <article class="info-card activity-card" id="activity"><div class="card-head"><p class="label"><i class="status-dot"></i> LIVE ACTIVITY</p><a href="#activity">View all <span aria-hidden="true">→</span></a></div><ul class="activity-list"><li><b>alex</b><span>added 3 tickets</span><time>2m ago</time></li><li><b>7F2A...91</b><span>added 1 ticket</span><time>3m ago</time></li><li><b>dima</b><span>added 10 tickets</span><time>5m ago</time></li><li><b>3AC1...72</b><span>joined</span><time>6m ago</time></li><li><b>maria</b><span>added 1 ticket</span><time>7m ago</time></li><li><b>9B7E...4F</b><span>added 5 tickets</span><time>8m ago</time></li></ul></article>
-          <article class="info-card winner-card"><div class="card-head"><p class="label">LAST WINNER</p><span class="badge">WIN #247</span></div><div class="winner-orbit" aria-hidden="true"></div><div class="winner-details"><p class="handle">◯ &nbsp;@dima</p><strong>$12,481</strong><p>142 tickets</p><small>◉ &nbsp;Verified on-chain</small></div></article>
-          <article class="info-card wins-card"><div class="card-head"><p class="label">♔ &nbsp;RECENT BIG WINS</p></div><ul class="wins-list"><li><span class="ring"></span><div><b>$8,421</b><small>87 tickets</small></div><time>2h ago</time></li><li><span class="ring"></span><div><b>$6,102</b><small>64 tickets</small></div><time>5h ago</time></li><li><span class="ring"></span><div><b>$4,883</b><small>52 tickets</small></div><time>8h ago</time></li><li><span class="ring"></span><div><b>$3,921</b><small>41 tickets</small></div><time>12h ago</time></li></ul><a class="wins-link" href="#winners">View all winners <span>→</span></a></article>
+          <article class="info-card activity-card" id="activity"><div class="card-head"><p class="label"><i class="status-dot"></i> LIVE ACTIVITY</p></div><ul class="activity-list" data-activity-list></ul></article>
+          <article class="info-card winner-card" data-middle-card></article>
+          <article class="info-card wins-card"><div class="card-head"><p class="label">♔ &nbsp;RECENT BIG WINS</p></div><ul class="wins-list" data-wins-list></ul><button class="wins-link" type="button" data-view-winners>View all winners <span>→</span></button></article>
         </div>
       </section>
 
@@ -67,6 +68,20 @@
       <section class="payment-panel" role="dialog" aria-modal="true" aria-labelledby="payment-modal-title">
         <button class="payment-close" type="button" aria-label="Close payment panel" data-payment-close>×</button>
         <div class="payment-content" data-payment-content></div>
+      </section>
+    </div>
+    <div class="payment-modal" id="winners-modal" hidden>
+      <div class="payment-modal-backdrop" aria-hidden="true"></div>
+      <section class="payment-panel winners-panel" role="dialog" aria-modal="true" aria-labelledby="winners-modal-title">
+        <button class="payment-close" type="button" aria-label="Close winners" data-winners-close>×</button>
+        <div class="payment-content"><div class="payment-heading"><span>DRAW HISTORY</span><h2 id="winners-modal-title">All winners</h2><p data-winners-note></p></div><ul class="all-winners-list" data-all-winners></ul></div>
+      </section>
+    </div>
+    <div class="payment-modal" id="verify-draw-modal" hidden>
+      <div class="payment-modal-backdrop" aria-hidden="true"></div>
+      <section class="payment-panel verify-panel" role="dialog" aria-modal="true" aria-labelledby="verify-draw-title">
+        <button class="payment-close" type="button" aria-label="Close Verify Draw" data-verify-close>×</button>
+        <div class="payment-content" data-verify-content></div>
       </section>
     </div>
     <div class="toast" role="status" aria-live="polite"></div>

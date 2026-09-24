@@ -1,0 +1,13 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: oneofus
+      POSTGRES_USER: oneofus
+      POSTGRES_PASSWORD: change-me-for-local-development
+    ports:
+      - "5432:5432"
+    volumes:
+      - oneofus-postgres:/var/lib/postgresql/data
+volumes:
+  oneofus-postgres:

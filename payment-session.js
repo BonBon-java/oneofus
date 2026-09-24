@@ -21,6 +21,7 @@
    * @property {string} network
    * @property {string} recipient
    * @property {string} displayName
+   * @property {string} payoutWallet
    * @property {string} expiresAt
    * @property {boolean} demo
    *
@@ -41,7 +42,10 @@
     constructor({ sources = paymentSources } = {}) {
       this.sources = sources;
       this.displayName = '';
-      this.sourceId = sources.find((source) => source.enabled)?.id || '';
+      this.payoutWallet = '';
+      this.sourceId = sources.find((source) => source.enabled && source.id === 'other')?.id
+        || sources.find((source) => source.enabled)?.id
+        || '';
       this.tickets = this.minimumTickets;
     }
 
@@ -58,17 +62,25 @@
       return this.displayName;
     }
 
+    setPayoutWallet(value) {
+      this.payoutWallet = String(value || '').trim();
+      return this.payoutWallet;
+    }
+
+    hasValidPayoutWallet() {
+      return /^0x[a-fA-F0-9]{40}$/.test(this.payoutWallet);
+    }
+
     setSource(sourceId) {
       const source = getPaymentSource(sourceId, this.sources);
       if (!source) throw new PaymentSessionError('invalid_source', 'Select an available payment source.');
       this.sourceId = source.id;
-      this.tickets = Math.max(this.tickets, this.minimumTickets);
       return this.source;
     }
 
     setTickets(value) {
       const tickets = Number.parseInt(value, 10);
-      this.tickets = Math.max(this.minimumTickets, Number.isFinite(tickets) ? tickets : this.minimumTickets);
+      this.tickets = Math.max(1, Number.isFinite(tickets) ? tickets : 1);
       return this.tickets;
     }
 
@@ -85,6 +97,7 @@
         displayName: this.displayName || 'Anonymous',
         source: this.sourceId,
         tickets: this.tickets,
+        payoutWallet: this.payoutWallet,
         network: 'Arbitrum One',
       };
     }
@@ -120,6 +133,7 @@
         network: this.config.network,
         recipient: this.config.demoRecipientAddress,
         displayName: request.displayName || 'Anonymous',
+        payoutWallet: request.payoutWallet,
         expiresAt: new Date(createdAt + this.config.sessionDurationMinutes * 60 * 1000).toISOString(),
         demo: true,
       };
@@ -133,7 +147,7 @@
     }
 
     async createPaymentSession(request) {
-      if (!this.config.sessionEndpoint || !this.config.recipientAddress) {
+      if (!this.config.sessionEndpoint) {
         throw new PaymentSessionError('payment_unavailable', 'Payment configuration is not available.');
       }
 

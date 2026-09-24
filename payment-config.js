@@ -7,12 +7,10 @@
     root.ONEOFUS_PAYMENT_CONFIG = config;
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this, () => ({
-  mode: 'demo',
+  mode: 'api',
   network: 'Arbitrum One',
-  recipientAddress: '',
-  sessionEndpoint: '',
-  // Deliberately invalid and visibly marked. Never replace this with a real
-  // recipient unless mode is changed to "api" and the backend issues sessions.
-  demoRecipientAddress: '0xDEMO000000000000000000000000000ONEOFUS',
-  sessionDurationMinutes: 15,
+  // The API returns the configured receiving address with each order. Keep it
+  // out of this static file so changing it requires a backend deployment.
+  sessionEndpoint: '/api/orders',
+  statusEndpoint: '/api/orders/',
 }));

@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.integration.example
 *.local
 config.local.*
 credentials*.json
@@ -33,6 +34,12 @@ coverage/
 .parcel-cache/
 .vite/
 *.log
+.local-integration/
+test-results/
+playwright-report/
+
+# Local payment state and one-time import backups
+/data/*.json
 
 # Editor and operating-system files
 .DS_Store

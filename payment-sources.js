@@ -7,47 +7,25 @@
     root.OneOfUsPaymentSources = api;
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this, () => {
-  // TODO: Verify withdrawal minimums and fee wording with each provider before
-  // enabling real payments. Demo values remain at one ticket to avoid presenting
-  // unconfirmed exchange limits as permanent rules.
-  const paymentSources = Object.freeze([
-    Object.freeze({
-      id: 'bybit',
-      label: 'Bybit',
-      enabled: true,
-      minimumTickets: 1,
-      minimumVerified: false,
-      feeText: 'Check the current withdrawal fee in Bybit before sending.',
-      instruction: 'Withdraw USDT and select Arbitrum One as the network.',
-    }),
-    Object.freeze({
-      id: 'binance',
-      label: 'Binance',
-      enabled: true,
-      minimumTickets: 1,
-      minimumVerified: false,
-      feeText: 'Check the current withdrawal fee in Binance before sending.',
-      instruction: 'Withdraw USDT and select Arbitrum One as the network.',
-    }),
-    Object.freeze({
-      id: 'okx',
-      label: 'OKX',
-      enabled: true,
-      minimumTickets: 1,
-      minimumVerified: false,
-      feeText: 'Check the current withdrawal fee in OKX before sending.',
-      instruction: 'Withdraw USDT and select Arbitrum One as the network.',
-    }),
-    Object.freeze({
-      id: 'other',
-      label: 'Other exchange / wallet',
-      enabled: true,
-      minimumTickets: 1,
-      minimumVerified: false,
-      feeText: 'Check the current withdrawal fee and minimum with your provider.',
-      instruction: 'Send USDT only through Arbitrum One.',
-    }),
-  ]);
+  // USDT / USDT0 withdrawal limits on Arbitrum One. Keep these values together
+  // so they can be updated when an exchange changes its withdrawal policy.
+  const sendingSources = Object.freeze({
+    binance: Object.freeze({ label: 'Binance', minTickets: 3, minimumWithdrawal: '3 USDT', warningText: 'Binance requires a minimum 3 USDT withdrawal on Arbitrum One. Choose at least 3 tickets or use another wallet.' }),
+    kucoin: Object.freeze({ label: 'KuCoin', minTickets: 5, minimumWithdrawal: '5 USDT', warningText: 'KuCoin requires a minimum 5 USDT withdrawal on Arbitrum One. Choose at least 5 tickets or use another wallet.' }),
+    kraken: Object.freeze({ label: 'Kraken', minTickets: 4, minimumWithdrawal: '4 USDT', warningText: 'Kraken requires a minimum 4 USDT withdrawal on Arbitrum One. Choose at least 4 tickets or use another wallet.' }),
+    okx: Object.freeze({ label: 'OKX', minTickets: 2, minimumWithdrawal: '~1.1 USDT', warningText: 'OKX currently has a withdrawal minimum slightly above 1 USDT on Arbitrum One. Choose at least 2 tickets or use another wallet.' }),
+    other: Object.freeze({ label: 'Other Wallet', minTickets: 1, minimumWithdrawal: null, infoText: 'Your wallet or exchange may have its own minimum withdrawal amount and fee. Please check before sending.' }),
+  });
+
+  const paymentSources = Object.freeze(Object.entries(sendingSources).map(([id, source]) => Object.freeze({
+    id,
+    enabled: true,
+    label: source.label,
+    minimumTickets: source.minTickets,
+    minimumWithdrawal: source.minimumWithdrawal,
+    warningText: source.warningText || '',
+    infoText: source.infoText || '',
+  })));
 
   function getPaymentSource(sourceId, sources = paymentSources) {
     return sources.find((source) => source.id === sourceId && source.enabled) || null;
@@ -62,5 +40,6 @@
     getMinimumTickets,
     getPaymentSource,
     paymentSources,
+    sendingSources,
   };
 });

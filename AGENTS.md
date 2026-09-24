@@ -21,3 +21,4 @@
 
 - Briefly list the files changed and what was done.
 - Report the checks that passed or could not be run.
+- Отвечайте пользователю на русском языке, включая итоговые отчёты и инструкции.
