@@ -99,6 +99,27 @@ missing signer, disabled mode, unsupported/wrong chain, production USDT address,
 missing bytecode, wrong decimals, insufficient test-token balance, and insufficient
 native gas before signing or sending.
 
+## Security boundaries
+
+The public API only creates and reads payment sessions and public draw data.
+Round closing, snapshot creation, randomness resolution, settlement, payout,
+reconciliation, and payment scanning are server-side scheduler/CLI operations;
+there are no public administrative HTTP routes. A browser `participantId` is
+convenience state only and is never accepted as authorization or used to select
+the participant for a new order.
+
+At startup the API validates the receiving wallet, PostgreSQL URL, network
+identity, bounded timing/confirmation settings, and mainnet HTTPS RPC URL. It
+will not start with testnet payout execution in production. Incoming Transfer
+logs are checked against the configured token and receiving wallet, persisted
+with their block hash, and checked again against the canonical block before
+ticket issuance. Ticket ranges have database-enforced non-overlap constraints.
+
+The backend sends a restrictive CSP, frame denial, `nosniff`, and referrer
+policy headers. The public order-creation endpoint has a per-source-IP
+in-memory limit of 12 requests per minute; deploy a shared edge rate limit when
+running more than one API process.
+
 `tests/fixtures/MockUSDT.sol` is a deliberately minimal, test-only 6-decimal
 fixture. Deploy and mint it only on a local EVM or approved testnet. No Solidity
 toolchain is bundled with this project.

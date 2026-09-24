@@ -266,7 +266,7 @@ class PostgresRepository {
       await db.query("UPDATE payout_intents SET status = 'confirmed', confirmed_at = now(), confirmed_block_number = $1, network_fee_wei = $2, updated_at = now() WHERE id = $3", [verification.blockNumber, verification.networkFeeWei, row.id]); await db.query("UPDATE settlements SET status = 'confirmed', confirmed_at = now(), updated_at = now() WHERE id = $1", [settlementId]); await db.query("UPDATE rounds SET status = 'completed', updated_at = now() WHERE id = (SELECT round_id FROM settlements WHERE id = $1)", [settlementId]); return this.settlementById(db, settlementId, false);
     });
   }
-  async createOrder(data, participantId) {
+  async createOrder(data) {
     return this.transaction(async (db) => {
       await db.query("SELECT pg_advisory_xact_lock(hashtext('oneofus-payment-code-allocation'))");
       await db.query('UPDATE payment_code_reservations SET active = false WHERE active AND cooldown_until <= now()');
@@ -294,7 +294,8 @@ class PostgresRepository {
   async getOrder(id) { return this.orderById(this.pool, id); }
   async recordTransfer(log, { tokenAddress, receivingAddress }) {
     return this.transaction(async (db) => {
-      const key = [log.transactionHash.toLowerCase(), Number.parseInt(log.logIndex, 16)]; const amount = BigInt(log.data).toString(); const payment = await db.query(`INSERT INTO payments (id, transaction_hash, log_index, block_number, token_address, from_address, to_address, received_amount, detected_at, payment_status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now(),'unmatched') ON CONFLICT (transaction_hash) DO NOTHING RETURNING id`, [crypto.randomUUID(), key[0], key[1], Number.parseInt(log.blockNumber, 16), tokenAddress.toLowerCase(), log.topics?.[1] ? `0x${log.topics[1].slice(-40)}` : null, receivingAddress.toLowerCase(), amount]);
+      if (!/^0x[0-9a-f]{64}$/i.test(log.transactionHash || '') || !/^0x[0-9a-f]{64}$/i.test(log.blockHash || '') || !/^0x[0-9a-f]+$/i.test(log.data || '') || !Array.isArray(log.topics) || !/^0x[0-9a-f]{64}$/i.test(log.topics[1] || '')) throw new Error('Malformed transfer log.');
+      const key = [log.transactionHash.toLowerCase(), Number.parseInt(log.logIndex, 16)]; const amount = BigInt(log.data).toString(); const payment = await db.query(`INSERT INTO payments (id, transaction_hash, log_index, block_number, block_hash, token_address, from_address, to_address, received_amount, detected_at, payment_status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now(),'unmatched') ON CONFLICT (transaction_hash) DO NOTHING RETURNING id`, [crypto.randomUUID(), key[0], key[1], Number.parseInt(log.blockNumber, 16), log.blockHash.toLowerCase(), tokenAddress.toLowerCase(), `0x${log.topics[1].slice(-40)}`, receivingAddress.toLowerCase(), amount]);
       if (!payment.rowCount) return null;
       const eligible = `((o.payment_status = 'pending' AND o.expires_at > now()) OR (o.payment_status = 'expired' AND o.cooldown_until > now()) OR o.payment_status IN ('payment_detected', 'paid'))`;
       // Exact reservations are deliberately queried first. An alias can never
@@ -311,12 +312,14 @@ class PostgresRepository {
       await db.query('UPDATE payments SET order_id = $1, payment_status = $2, matched_by = $3, expected_amount = $4, matched_amount = $5 WHERE id = $6', [order.id, status, matchedBy, order.expected_payment_amount, amount, payment.rows[0].id]); return { status, orderId: order.id, matchedBy };
     });
   }
-  async confirmPayments(head, confirmations) {
+  async pendingPaymentBlocks(head, confirmations) { const result = await this.pool.query(`SELECT DISTINCT p.block_number FROM payments p JOIN orders o ON o.id = p.order_id WHERE o.payment_status = 'payment_detected' AND $1 - p.block_number + 1 >= $2`, [head, confirmations]); return result.rows.map((row) => Number(row.block_number)); }
+  async confirmPayments(head, confirmations, canonicalBlockHashes = null) {
     return this.transaction(async (db) => {
-      const orders = await db.query(`SELECT * FROM orders WHERE payment_status = 'payment_detected' AND $1 - block_number + 1 >= $2 FOR UPDATE`, [head, confirmations]);
+      const orders = await db.query(`SELECT o.*, p.block_hash FROM orders o JOIN payments p ON p.order_id = o.id AND p.payment_status = 'payment_detected' WHERE o.payment_status = 'payment_detected' AND $1 - o.block_number + 1 >= $2 FOR UPDATE OF o, p`, [head, confirmations]);
       if (!orders.rowCount) return [];
       const counter = await db.query("SELECT next_value FROM app_counters WHERE name = 'ticket' FOR UPDATE"); let next = BigInt(counter.rows[0].next_value); const completed = [];
       for (const order of orders.rows) {
+        if (canonicalBlockHashes && canonicalBlockHashes.get(Number(order.block_number)) !== order.block_hash) continue;
         const round = await this.roundForTicketIssuance(db, order.round_id);
         const start = next; const end = start + BigInt(order.ticket_quantity) - 1n; next = end + 1n;
         await db.query(`UPDATE orders SET round_id = $1, payment_status = 'paid', paid_at = now(), cooldown_until = now() + ($2 * interval '1 minute'), ticket_range_start = $3, ticket_range_end = $4 WHERE id = $5`, [round.id, PAYMENT_CODE_COOLDOWN_MINUTES, start.toString(), end.toString(), order.id]);

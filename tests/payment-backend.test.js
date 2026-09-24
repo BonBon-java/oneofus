@@ -58,12 +58,20 @@ test('ambiguous aliases and unmatched amounts are never auto-credited', () => {
 
 test('delegates a validated order to the PostgreSQL repository', async () => {
   let captured;
-  const repository = { createOrder: async (data, participantId) => { captured = { data, participantId }; return { id: 'order', participant_id: 'participant', ticket_quantity: 1, base_ticket_amount: '1', expected_payment_amount: '1001000', payment_code: 1, sending_source: 'other', participant_name: 'Nikita', payout_wallet: '0x1234567890abcdef1234567890abcdef12345678', expires_at: new Date(), payment_status: 'pending' }; } };
+  const repository = { createOrder: async (data) => { captured = { data }; return { id: 'order', participant_id: 'participant', ticket_quantity: 1, base_ticket_amount: '1', expected_payment_amount: '1001000', payment_code: 1, sending_source: 'other', participant_name: 'Nikita', payout_wallet: '0x1234567890abcdef1234567890abcdef12345678', expires_at: new Date(), payment_status: 'pending' }; } };
   const service = new PaymentService(repository, '0x9c5dddc861b60b0dce772d9b0924c92e14d3bf02');
   const order = await service.create({ displayName: 'Nikita', source: 'other', tickets: 1, payoutWallet: '0x1234567890abcdef1234567890abcdef12345678', participantId: 'participant' });
-  assert.equal(captured.participantId, 'participant');
+  assert.equal('participantId' in captured, false);
   assert.equal(captured.data.ticketQuantity, 1);
   assert.equal(service.publicOrder(order).expectedAmount, '1.001');
+});
+
+test('rejects coercive, fractional, and oversized order input before it reaches persistence', async () => {
+  const { validateOrderInput } = require('../payment-domain.js'); const { paymentSources } = require('../payment-sources.js');
+  const valid = { displayName: 'Nikita', source: 'other', payoutWallet: '0x1234567890abcdef1234567890abcdef12345678' };
+  for (const tickets of ['1e2', '1.5', '1tickets', 1.1, Infinity, '0001']) assert.throws(() => validateOrderInput({ ...valid, tickets }, paymentSources), /whole number/);
+  assert.throws(() => validateOrderInput({ ...valid, tickets: -1 }, paymentSources), /Choose between/);
+  assert.throws(() => validateOrderInput({ ...valid, tickets: 1, displayName: 'x'.repeat(29) }, paymentSources), /at most 28/);
 });
 
 test('SQL migrations define event idempotency and identifier reservations', () => {
@@ -82,4 +90,7 @@ test('SQL migrations define event idempotency and identifier reservations', () =
   assert.match(roundSql, /ticket_ledger_entries/);
   assert.match(roundSql, /payments_transaction_hash_unique/);
   assert.match(roundSql, /at least 10 paid tickets/);
+  const securitySql = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'migrations/011_security_hardening.sql'), 'utf8');
+  assert.match(securitySql, /block_hash/);
+  assert.match(securitySql, /ticket_ledger_entries_no_overlap/);
 });
