@@ -7,7 +7,7 @@ async function main() {
   const pool = createDatabase();
   try {
     await migrate(pool); const repository = new PostgresRepository(pool);
-    if (action === 'status') { console.log(JSON.stringify(await repository.operationalControls(), null, 2)); return; }
+    if (action === 'status') { const controls = await repository.operationalControls(); const payouts = await pool.query("SELECT status, count(*)::int AS count FROM payout_intents GROUP BY status ORDER BY status"); console.log(JSON.stringify({ controls, payouts: payouts.rows }, null, 2)); return; }
     if (!['pause', 'resume'].includes(action) || !control) throw new Error('Usage: operations.js status | pause <control> | resume <control>');
     if (!actor) throw new Error('ONE_OF_US_OPERATOR_ID is required for a control change.');
     await repository.setOperationalControl(control, action === 'resume', actor);

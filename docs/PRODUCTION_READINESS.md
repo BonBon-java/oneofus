@@ -11,11 +11,10 @@ rescans a short history on every run. A cursor is written only after the whole
 chunk has been recorded, so a failure cannot skip events. Payment finalization
 still validates each stored block hash against the canonical block.
 
-The project intentionally has no production payout signer. `ONE_OF_US_PAYOUT_MODE`
-is test-only and is rejected with `NODE_ENV=production`; no environment private
-key can unlock a mainnet transfer. Mainnet payouts require a separately reviewed
-external/KMS signer, explicit per-transfer approval, treasury reconciliation,
-and a new release review.
+Production payout remains fail-closed. Test-only `ONE_OF_US_PAYOUT_MODE` is
+rejected in production, and raw-key variables are forbidden. A future payout
+requires the reviewed external/KMS boundary described in `PRODUCTION_SIGNER.md`,
+treasury reconciliation, a controlled canary, and a new release review.
 
 ## Staging gate
 
