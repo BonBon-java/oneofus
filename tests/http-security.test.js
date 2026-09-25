@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createServer } = require('../server.js');
+const { createServer, paymentConfigScript } = require('../server.js');
 
 async function withApi(run) {
   const service = { create: async () => ({ id: 'order', participant_id: 'participant', ticket_quantity: 1, base_ticket_amount: '1', expected_payment_amount: '1001000', payment_code: 1, sending_source: 'other', participant_name: 'Ada', payout_wallet: '0x1234567890abcdef1234567890abcdef12345678', expires_at: new Date(), payment_status: 'pending' }), publicOrder: (order) => order };
@@ -21,4 +21,9 @@ test('order API applies browser hardening headers and a bounded abuse limit', as
     for (let index = 0; index < 11; index += 1) assert.equal((await request()).status, 201);
     assert.equal((await request()).status, 429);
   });
+});
+
+test('runtime payment configuration marks a staging UI without exposing a secret', () => {
+  const script = paymentConfigScript({ network: 'Arbitrum Sepolia', staging: true });
+  assert.match(script, /Arbitrum Sepolia/); assert.match(script, /"staging":true/); assert.doesNotMatch(script, /PRIVATE_KEY|DATABASE_URL/);
 });

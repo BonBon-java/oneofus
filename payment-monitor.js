@@ -7,7 +7,7 @@ const hex = (number) => `0x${Number(number).toString(16)}`;
 const parseHex = (value) => Number.parseInt(value, 16);
 const addressTopic = (address) => `0x${'0'.repeat(24)}${address.slice(2).toLowerCase()}`;
 class ArbitrumPaymentMonitor {
-  constructor({ repository, service, rpcUrl, rpcUrls, rpcClient, receivingAddress, fetchFunction = fetch, pollInterval = Number(process.env.PAYMENT_POLL_INTERVAL_MS || 15000), target = paymentNetwork(), confirmations = PAYMENT_CONFIRMATIONS, scanMaxBlocks = Number(process.env.ONE_OF_US_SCAN_MAX_BLOCKS || 500) }) { Object.assign(this, { repository, service, rpcUrl, receivingAddress, fetchFunction, pollInterval, target, confirmations, scanMaxBlocks, rpcClient: rpcClient || new ResilientRpcClient({ urls: rpcUrls || [rpcUrl], fetchFunction, timeoutMs: Number(process.env.ONE_OF_US_RPC_TIMEOUT_MS || 10000), attempts: Number(process.env.ONE_OF_US_RPC_ATTEMPTS || 3) }) }); }
+  constructor({ repository, service, rpcUrl, rpcUrls, rpcClient, receivingAddress, fetchFunction = fetch, pollInterval = Number(process.env.PAYMENT_POLL_INTERVAL_MS || 15000), target = paymentNetwork(), confirmations = PAYMENT_CONFIRMATIONS, scanMaxBlocks = Number(process.env.ONE_OF_US_SCAN_MAX_BLOCKS || 500) }) { Object.assign(this, { repository, service, rpcUrl, receivingAddress, fetchFunction, pollInterval, target, confirmations, scanMaxBlocks, lastScanAt: null, lastScanError: null, lastHeadBlock: null, lastHeadTimestamp: null, rpcClient: rpcClient || new ResilientRpcClient({ urls: rpcUrls || [rpcUrl], fetchFunction, timeoutMs: Number(process.env.ONE_OF_US_RPC_TIMEOUT_MS || 10000), attempts: Number(process.env.ONE_OF_US_RPC_ATTEMPTS || 3) }) }); }
   async rpc(method, params) { return this.rpcClient.call(method, params); }
   async scan() {
     await this.service.expirePending(); const head = parseHex(await this.rpc('eth_blockNumber', []));
@@ -21,6 +21,9 @@ class ArbitrumPaymentMonitor {
       await this.repository.setScannerBlock(this.target.scannerName, chunkTo);
     }
     await this.confirm(head);
+    const headBlock = await this.rpc('eth_getBlockByNumber', [hex(head), false]);
+    if (!headBlock?.timestamp) throw new Error('RPC returned an invalid head block.');
+    this.lastHeadBlock = head; this.lastHeadTimestamp = parseHex(headBlock.timestamp); this.lastScanAt = new Date(); this.lastScanError = null;
   }
   async verifyTokenDecimals() {
     const result = await this.rpc('eth_call', [{ to: this.target.tokenAddress, data: '0x313ce567' }, 'latest']);
@@ -40,12 +43,16 @@ class ArbitrumPaymentMonitor {
   start() {
     Promise.all([this.verifyNetwork(), this.verifyTokenDecimals()])
       .then(() => {
-        this.scan().catch(console.error);
-        this.timer = setInterval(() => this.scan().catch(console.error), this.pollInterval);
+        const run = () => this.scan().catch((error) => { this.lastScanError = error.message; console.error(error); });
+        run(); this.timer = setInterval(run, this.pollInterval);
       })
       .catch((error) => console.error('Arbitrum payment monitor did not start:', error));
   }
   stop() { if (this.timer) clearInterval(this.timer); this.timer = null; }
-  status() { return { ...this.rpcClient.status(), scannerName: this.target.scannerName }; }
+  status() {
+    const maxAgeMs = Math.max(this.pollInterval * 3, 60_000); const scanAgeMs = this.lastScanAt ? Date.now() - this.lastScanAt.getTime() : null;
+    const rpc = this.rpcClient.status(); const stale = scanAgeMs === null || scanAgeMs > maxAgeMs;
+    return { ...rpc, ready: Boolean(rpc.ready && !stale && !this.lastScanError), stale, scanAgeMs, lastScanAt: this.lastScanAt, lastScanError: this.lastScanError, lastHeadBlock: this.lastHeadBlock, lastHeadTimestamp: this.lastHeadTimestamp, scannerName: this.target.scannerName };
+  }
 }
 module.exports = { ArbitrumPaymentMonitor, TRANSFER_TOPIC };

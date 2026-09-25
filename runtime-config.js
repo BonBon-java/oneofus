@@ -38,8 +38,11 @@ function validateRuntimeConfiguration(env = process.env) {
   integerSetting(env, 'ONE_OF_US_RPC_ATTEMPTS', { minimum: 1, maximum: 5 });
   integerSetting(env, 'ONE_OF_US_SCAN_MAX_BLOCKS', { minimum: 1, maximum: 10000 });
   if (env.ONE_OF_US_PAYOUT_MODE) {
-    if (env.NODE_ENV === 'production') throw new Error('Testnet payout execution is forbidden in production.');
-    payoutTargetConfig(env);
+    if (environment === 'production' || env.NODE_ENV === 'production') throw new Error('Testnet payout execution is forbidden in production.');
+    const payout = payoutTargetConfig(env);
+    if (environment === 'staging' && (payout.chainId !== target.chainId || payout.tokenAddress.toLowerCase() !== target.tokenAddress.toLowerCase())) {
+      throw new Error('Staging payout target must use the configured staging payment chain and token.');
+    }
   }
   return { ...target, environment, rpcUrls: [env.ARBITRUM_RPC_URL, env.ARBITRUM_RPC_FALLBACK_URL].filter(Boolean) };
 }

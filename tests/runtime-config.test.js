@@ -25,5 +25,14 @@ test('staging is pinned to Arbitrum Sepolia and cannot reuse the production toke
   assert.equal(target.chainId, 421614);
   assert.deepEqual(target.rpcUrls, [staging.ARBITRUM_RPC_URL, staging.ARBITRUM_RPC_FALLBACK_URL]);
   assert.throws(() => validateRuntimeConfiguration({ ...staging, ONE_OF_US_PAYMENT_TOKEN_ADDRESS: '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9' }), /non-production/);
+  assert.throws(() => validateRuntimeConfiguration({ ...staging, ONE_OF_US_PAYMENT_TOKEN_ADDRESS: `0x${'0'.repeat(40)}` }), /non-zero/);
   assert.throws(() => validateRuntimeConfiguration({ ...staging, ONE_OF_US_ENV: 'production' }), /Production environment/);
+});
+
+test('production never accepts a testnet signer, and staging payout is bound to its inbound token', () => {
+  const staging = { DATABASE_URL: base.DATABASE_URL, ONE_OF_US_RECEIVING_ADDRESS: base.ONE_OF_US_RECEIVING_ADDRESS, ONE_OF_US_ENV: 'staging', ONE_OF_US_PAYMENT_MODE: 'staging', ARBITRUM_RPC_URL: 'https://sepolia.example.test/rpc', ONE_OF_US_PAYMENT_TOKEN_ADDRESS: `0x${'2'.repeat(40)}`, ONE_OF_US_PAYOUT_MODE: 'testnet', ONE_OF_US_PAYOUT_RPC_URL: 'https://sepolia.example.test/rpc', ONE_OF_US_PAYOUT_CHAIN_ID: '421614', ONE_OF_US_PAYOUT_TOKEN_ADDRESS: `0x${'2'.repeat(40)}` };
+  assert.equal(validateRuntimeConfiguration(staging).chainId, 421614);
+  assert.throws(() => validateRuntimeConfiguration({ ...staging, ONE_OF_US_PAYOUT_TOKEN_ADDRESS: `0x${'3'.repeat(40)}` }), /must use the configured staging payment chain and token/);
+  const production = { ...staging, ONE_OF_US_ENV: 'production', ONE_OF_US_PAYMENT_MODE: 'mainnet', ONE_OF_US_PAYOUT_MODE: 'testnet', ARBITRUM_RPC_URL: 'https://arb1.example.test/rpc' };
+  assert.throws(() => validateRuntimeConfiguration(production), /forbidden in production/);
 });
