@@ -62,6 +62,12 @@ For each settlement, winner amount is `floor(gross * 85 / 100)` and project gros
 
 The KMS signer address is the gas wallet. The operator manually replenishes ETH after a low-gas warning. The system does not swap USDT, buy ETH, bridge, transfer from treasury, or refill gas automatically.
 
+## Arbitrum Sepolia staging payout
+
+`ONE_OF_US_PAYOUT_SIGNER_MODE=aws-kms` enables the KMS-backed provider only when every one of the following is explicit: `ONE_OF_US_ENV=staging`, `ONE_OF_US_PAYOUT_MODE=testnet`, Arbitrum Sepolia chain ID `421614`, a non-production six-decimal `sUSDT` address, the tested KMS ARN and the derived signer address. It never accepts a raw private key in this mode. The provider constructs only the configured ERC-20 transfer, revalidates the KMS identity before signing, locally recovers the signer, then broadcasts through the staging RPC.
+
+Keep `ONE_OF_US_PAYOUT_SIGNER_MODE` empty until the KMS address has separately received a small amount of Arbitrum Sepolia ETH for gas and the staging `sUSDT` token has been deployed and funded. These are public-chain test assets only; none of this authorizes an Arbitrum One or production-USDT transfer.
+
 ## Reporting
 
 `/reporting/overview` and `/reporting/settlements` are authenticated GET-only endpoints. They expose accounting and gas status, not signing or mutation controls. Configure a distinct reporting token and, in deployment, a SELECT-only database role for reporting queries. A reporting credential must never be accepted by the signer service.
