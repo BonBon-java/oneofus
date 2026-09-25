@@ -266,7 +266,7 @@
             <strong>Your exchange may charge a withdrawal fee.</strong>
             <span>The fee is set by your exchange and is not charged by One of Us.</span>
           </div>
-          <div class="network-pill"><strong>Network: Arbitrum One</strong><small>Sending USDT through another network may result in permanent loss of funds.</small></div>
+          <div class="network-pill"><strong>Network: ${escapeHtml(this.config.network || 'Arbitrum One')}${this.config.staging ? ' · TESTNET' : ''}</strong><small>${this.config.staging ? 'Staging-only sUSDT. Do not send production USDT or funds.' : 'Sending USDT through another network may result in permanent loss of funds.'}</small></div>
           <p class="payment-error" role="alert" data-payment-error></p>
           <button class="payment-action" type="button" data-continue>CONTINUE</button>
         </div>

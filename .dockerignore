@@ -1,0 +1,7 @@
+.git
+node_modules
+.env*
+.local-integration
+test-results
+playwright-report
+coverage

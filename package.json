@@ -18,7 +18,9 @@
     "start": "node server.js",
     "db:migrate": "node scripts/migrate.js",
     "db:import-json": "node scripts/import-json.js",
-    "operations": "node scripts/operations.js"
+    "operations": "node scripts/operations.js",
+    "staging:smoke": "node scripts/staging-smoke.js",
+    "staging:token:deploy": "node scripts/deploy-staging-usdt.js"
   },
   "repository": {
     "type": "git",
