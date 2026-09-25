@@ -1,15 +1,19 @@
 'use strict';
-const test = require('node:test'); const assert = require('node:assert/strict'); const crypto = require('node:crypto'); const { ethers } = require('ethers');
-const { ethereumAddressFromSpki, derEcdsaSignature, recoverKmsSignature } = require('../kms-ethereum.js'); const { AwsKmsEthereumSigner, createAwsKmsClient } = require('../aws-kms-signer.js');
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
+const { ethers } = require('ethers');
+const { ethereumAddressFromSpki, derEcdsaSignature, recoverKmsSignature } = require('../kms-ethereum.js');
+const { AwsKmsEthereumSigner, createAwsKmsClient, inspectKmsPublicKey, KMS_KEY_SPEC, KMS_KEY_USAGE, KMS_SIGNING_ALGORITHM } = require('../aws-kms-signer.js');
+
 function derInteger(hex) { const raw = Buffer.from(hex.replace(/^0x/, ''), 'hex'); const value = raw[0] & 0x80 ? Buffer.concat([Buffer.from([0]), raw]) : raw; return Buffer.concat([Buffer.from([2, value.length]), value]); }
 function derSignature(signature) { const body = Buffer.concat([derInteger(signature.r), derInteger(signature.s)]); return Buffer.concat([Buffer.from([0x30, body.length]), body]); }
 function fixture() { const pair = crypto.generateKeyPairSync('ec', { namedCurve: 'secp256k1' }); const spki = pair.publicKey.export({ format: 'der', type: 'spki' }); const address = ethereumAddressFromSpki(spki); const key = new ethers.SigningKey(`0x${Buffer.from(pair.privateKey.export({ format: 'jwk' }).d, 'base64url').toString('hex')}`); return { spki, address, key }; }
-test('DER/SPKI public key derives its Ethereum address and KMS DER signature recovers it', async () => {
-  const f = fixture(); const digest = ethers.keccak256(ethers.toUtf8Bytes('oneofus-kms-fixture')); const der = derSignature(f.key.sign(digest)); const parsed = derEcdsaSignature(der); assert.ok(parsed.r > 0n); assert.equal(ethers.recoverAddress(digest, recoverKmsSignature(digest, der, f.address)), f.address);
-});
-test('AWS KMS adapter verifies identity and signs an Ethereum transaction before returning it', async () => {
-  const f = fixture(); const kms = { getPublicKey: async () => ({ PublicKey: f.spki }), sign: async ({ Message }) => ({ Signature: derSignature(f.key.sign(ethers.hexlify(Message))) }) }; const signer = new AwsKmsEthereumSigner({ kms, keyId: 'alias/test', expectedAddress: f.address, region: 'eu-central-1' });
-  const tx = await signer.signTransaction({ chainId: 42161, nonce: 0, to: '0x1111111111111111111111111111111111111111', value: 0, data: '0x', gasLimit: 21000, maxFeePerGas: 1, maxPriorityFeePerGas: 1, type: 2 });
-  assert.equal(ethers.Transaction.from(tx.signedTransaction).from, f.address); assert.equal(tx.signer, f.address);
-});
-test('AWS SDK client requires an explicit deployment region', () => { assert.throws(() => createAwsKmsClient({}), /region/); const client = createAwsKmsClient({ region: 'eu-central-1' }); assert.equal(typeof client.getPublicKey, 'function'); assert.equal(typeof client.sign, 'function'); });
+function kmsFixture(f, overrides = {}) { const metadata = { Arn: 'arn:aws:kms:eu-central-1:123456789012:key/test-key', KeyState: 'Enabled', KeySpec: KMS_KEY_SPEC, KeyUsage: KMS_KEY_USAGE, SigningAlgorithms: [KMS_SIGNING_ALGORITHM], ...overrides }; return { describeKey: async () => ({ KeyMetadata: metadata }), getPublicKey: async () => ({ PublicKey: f.spki, KeySpec: metadata.KeySpec, KeyUsage: metadata.KeyUsage, SigningAlgorithms: metadata.SigningAlgorithms }), sign: async ({ Message }) => ({ Signature: derSignature(f.key.sign(ethers.hexlify(Message))) }) }; }
+
+test('DER/SPKI public key derives its Ethereum address and KMS DER signature recovers it', () => { const f = fixture(); const digest = ethers.keccak256(ethers.toUtf8Bytes('oneofus-kms-fixture')); const der = derSignature(f.key.sign(digest)); const parsed = derEcdsaSignature(der); assert.ok(parsed.r > 0n); assert.equal(ethers.recoverAddress(digest, recoverKmsSignature(digest, der, f.address)), f.address); });
+test('AWS KMS adapter validates metadata and signs an Ethereum transaction before returning it', async () => { const f = fixture(); const signer = new AwsKmsEthereumSigner({ kms: kmsFixture(f), keyId: 'alias/test', expectedAddress: f.address, region: 'eu-central-1', expectedKeyArn: 'arn:aws:kms:eu-central-1:123456789012:key/test-key' }); const tx = await signer.signTransaction({ chainId: 42161, nonce: 0, to: '0x1111111111111111111111111111111111111111', value: 0, data: '0x', gasLimit: 21000, maxFeePerGas: 1, maxPriorityFeePerGas: 1, type: 2 }); assert.equal(ethers.Transaction.from(tx.signedTransaction).from, f.address); assert.equal(tx.signer, f.address); });
+test('KMS inspection rejects disabled, incompatible, or cross-region keys before signing', async () => { const f = fixture(); for (const overrides of [{ KeyState: 'Disabled' }, { KeySpec: 'ECC_NIST_P256' }, { KeyUsage: 'ENCRYPT_DECRYPT' }, { SigningAlgorithms: [] }, { Arn: 'arn:aws:kms:us-east-1:123456789012:key/test-key' }]) await assert.rejects(inspectKmsPublicKey({ kms: kmsFixture(f, overrides), keyId: 'alias/test', region: 'eu-central-1' })); });
+test('KMS inspection rejects a derived address different from the configured address', async () => { const f = fixture(); const other = fixture(); await assert.rejects(inspectKmsPublicKey({ kms: kmsFixture(f), keyId: 'alias/test', region: 'eu-central-1', expectedAddress: other.address }), /does not match/); });
+test('AWS SDK client requires an explicit deployment region and exposes required operations', () => { assert.throws(() => createAwsKmsClient({}), /region/); const client = createAwsKmsClient({ region: 'eu-central-1' }); assert.equal(typeof client.describeKey, 'function'); assert.equal(typeof client.getPublicKey, 'function'); assert.equal(typeof client.sign, 'function'); });

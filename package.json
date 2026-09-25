@@ -23,6 +23,7 @@
     "staging:token:deploy": "node scripts/deploy-staging-usdt.js",
     "payout:dry-run": "node scripts/payout-dry-run.js",
     "payout:signer-smoke": "node scripts/signer-smoke.js",
+    "payout:kms-address": "node scripts/kms-address.js",
     "payout:kms-smoke": "node scripts/kms-smoke.js"
   },
   "repository": {
