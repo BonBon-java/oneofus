@@ -12,8 +12,11 @@ test('production signer remains disabled by default and rejects raw private key 
 test('production signer requires an expected identity and isolated signer configuration', () => {
   assert.throws(() => productionSignerConfig({ PAYOUT_ENABLED: 'true', PAYOUT_SIGNER_MODE: 'production-external' }), /EXPECTED_SIGNER/);
   assert.throws(() => productionSignerConfig({ PAYOUT_ENABLED: 'true', PAYOUT_SIGNER_MODE: 'production-external', PAYOUT_EXPECTED_SIGNER_ADDRESS: address }), /isolated signer/);
-  assert.throws(() => productionSignerConfig({ PAYOUT_ENABLED: 'true', PAYOUT_SIGNER_MODE: 'production-external', PAYOUT_EXPECTED_SIGNER_ADDRESS: '0x0000000000000000000000000000000000000000', PAYOUT_SIGNER_URL: 'https://signer.example', PAYOUT_SIGNER_AUTH_TOKEN: 'token' }), /zero address/);
-  assert.throws(() => productionSignerConfig({ PAYOUT_ENABLED: 'true', PAYOUT_SIGNER_MODE: 'production-external', PAYOUT_EXPECTED_SIGNER_ADDRESS: address, PAYOUT_SIGNER_URL: 'https://signer.example', PAYOUT_SIGNER_AUTH_TOKEN: 'token' }), /MAX_SINGLE/);
+  assert.throws(() => productionSignerConfig({ PAYOUT_ENABLED: 'true', PAYOUT_SIGNER_MODE: 'production-external', PAYOUT_EXPECTED_SIGNER_ADDRESS: '0x0000000000000000000000000000000000000000', PAYOUT_SIGNER_URL: 'https://signer.example', PAYOUT_SIGNER_AUTH_TOKEN: 'token', PAYOUT_TREASURY_ADDRESS: '0x2222222222222222222222222222222222222222' }), /zero address/);
+  assert.throws(() => productionSignerConfig({ PAYOUT_ENABLED: 'true', PAYOUT_SIGNER_MODE: 'production-external', PAYOUT_EXPECTED_SIGNER_ADDRESS: address, PAYOUT_SIGNER_URL: 'https://signer.example', PAYOUT_SIGNER_AUTH_TOKEN: 'token' }), /TREASURY/);
+  const base = { PAYOUT_ENABLED: 'true', PAYOUT_SIGNER_MODE: 'production-external', PAYOUT_EXPECTED_SIGNER_ADDRESS: address, PAYOUT_SIGNER_URL: 'https://signer.example', PAYOUT_SIGNER_AUTH_TOKEN: 'token', PAYOUT_TREASURY_ADDRESS: '0x2222222222222222222222222222222222222222', MAX_SINGLE_PAYOUT_BASE_UNITS: '1', MIN_GAS_BALANCE_WEI: '1' };
+  assert.throws(() => productionSignerConfig(base), /AWS_KMS/);
+  assert.equal(productionSignerConfig({ ...base, AWS_KMS_KEY_ID: 'alias/oneofus', AWS_REGION: 'eu-central-1' }).treasuryAddress, '0x2222222222222222222222222222222222222222');
 });
 test('external signer accepts only its configured identity and payout-shaped requests', async () => {
   const calls = []; const client = { identity: async () => ({ address }), prepareErc20Transfer: async (intent) => { calls.push(intent); return { requestId: 'kms-request' }; }, broadcastPreparedTransfer: async () => ({ transactionHash: '0xabc' }) };

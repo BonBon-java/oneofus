@@ -22,7 +22,8 @@
     "staging:smoke": "node scripts/staging-smoke.js",
     "staging:token:deploy": "node scripts/deploy-staging-usdt.js",
     "payout:dry-run": "node scripts/payout-dry-run.js",
-    "payout:signer-smoke": "node scripts/signer-smoke.js"
+    "payout:signer-smoke": "node scripts/signer-smoke.js",
+    "payout:kms-smoke": "node scripts/kms-smoke.js"
   },
   "repository": {
     "type": "git",
@@ -37,6 +38,7 @@
   },
   "homepage": "https://github.com/BonBon-java/oneofus#readme",
   "dependencies": {
+    "@aws-sdk/client-kms": "^3.1140.0",
     "drand-client": "^1.4.2",
     "ethers": "^6.17.0",
     "pg": "^8.23.0"

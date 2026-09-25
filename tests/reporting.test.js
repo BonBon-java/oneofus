@@ -1,0 +1,5 @@
+'use strict';
+const test = require('node:test'); const assert = require('node:assert/strict'); const { ReportingService, gasStatus } = require('../reporting-service.js'); const { reportingAuthorized } = require('../server.js');
+test('gas capacity is explicitly an estimate and low gas is visible', () => { assert.deepEqual(gasStatus('420', '100', '500', '100'), { balanceWei: '420', severity: 'warning', estimatedTransferCapacity: '4' }); });
+test('reporting service contains read-only data only', async () => { const service = new ReportingService({ reportingOverview: async () => ({ accounting: {} }), reportingSettlements: async () => [] }, { gasBalanceWei: '0', criticalGasWei: '1' }); assert.equal((await service.overview()).gas.severity, 'critical'); assert.deepEqual(await service.settlements(), []); });
+test('reporting credentials are separate and exact', () => { assert.equal(reportingAuthorized({ headers: { authorization: 'Bearer read-only' } }, 'read-only'), true); assert.equal(reportingAuthorized({ headers: { authorization: 'Bearer write' } }, 'read-only'), false); });

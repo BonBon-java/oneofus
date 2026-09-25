@@ -17,6 +17,11 @@
 - After making changes, run the project's relevant formatting, linting, test, and build checks when available.
 - If a check cannot be run, state why clearly.
 
+## GitHub workflow
+
+- Creating a pull request for a completed, reviewed change does not require an additional confirmation.
+- Merge a pull request normally once all required protected checks are green and the change is safe; do not request a separate merge confirmation.
+
 ## Result
 
 - Briefly list the files changed and what was done.
