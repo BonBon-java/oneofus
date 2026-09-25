@@ -16,9 +16,12 @@ function productionSignerConfig(env = process.env) {
   if (mode !== 'production-external') throw new Error('Production payout requires PAYOUT_SIGNER_MODE=production-external.');
   if (!env.PAYOUT_EXPECTED_SIGNER_ADDRESS) throw new Error('PAYOUT_EXPECTED_SIGNER_ADDRESS is required when production payout is enabled.');
   if (!env.PAYOUT_SIGNER_URL || !env.PAYOUT_SIGNER_AUTH_TOKEN) throw new Error('Production payout requires an isolated signer URL and credential.');
+  if (!env.PAYOUT_TREASURY_ADDRESS) throw new Error('PAYOUT_TREASURY_ADDRESS is required when production payout is enabled.');
   const expectedAddress = ethers.getAddress(env.PAYOUT_EXPECTED_SIGNER_ADDRESS); if (expectedAddress === ethers.ZeroAddress) throw new Error('PAYOUT_EXPECTED_SIGNER_ADDRESS must not be the zero address.');
   for (const name of ['MAX_SINGLE_PAYOUT_BASE_UNITS', 'MIN_GAS_BALANCE_WEI']) if (!/^[1-9][0-9]*$/.test(env[name] || '')) throw new Error(`${name} must be a positive integer when production payout is enabled.`);
-  return { mode, enabled: true, expectedAddress, url: env.PAYOUT_SIGNER_URL, maxSinglePayoutBaseUnits: env.MAX_SINGLE_PAYOUT_BASE_UNITS, minGasBalanceWei: env.MIN_GAS_BALANCE_WEI };
+  const treasuryAddress = ethers.getAddress(env.PAYOUT_TREASURY_ADDRESS); if (treasuryAddress === ethers.ZeroAddress) throw new Error('PAYOUT_TREASURY_ADDRESS must not be the zero address.');
+  if (!env.AWS_KMS_KEY_ID || !env.AWS_REGION) throw new Error('Production payout requires explicit AWS_KMS_KEY_ID and AWS_REGION.');
+  return { mode, enabled: true, expectedAddress, treasuryAddress, url: env.PAYOUT_SIGNER_URL, kmsKeyId: env.AWS_KMS_KEY_ID, awsRegion: env.AWS_REGION, maxSinglePayoutBaseUnits: env.MAX_SINGLE_PAYOUT_BASE_UNITS, minGasBalanceWei: env.MIN_GAS_BALANCE_WEI };
 }
 
 function payoutTargetConfig(env = process.env) {
