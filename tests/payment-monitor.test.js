@@ -30,3 +30,16 @@ test('does not finalize detected payments against a mismatched canonical block',
   await monitor.confirm(30);
   assert.equal(calls[0][2].get(25), `0x${'c'.repeat(64)}`);
 });
+
+test('persists the scanner cursor after each successfully recorded bounded chunk', async () => {
+  const cursors = []; const ranges = [];
+  const monitor = new ArbitrumPaymentMonitor({ repository: { getScannerBlock: async () => null, setScannerBlock: async (_name, block) => cursors.push(block), recordTransfer: async () => {}, pendingPaymentBlocks: async () => [], confirmPayments: async () => {} }, service: { expirePending: async () => {} }, rpcUrl: 'http://rpc', receivingAddress: '0x1234567890abcdef1234567890abcdef12345678', scanMaxBlocks: 2 });
+  monitor.rpc = async (method, params) => {
+    if (method === 'eth_blockNumber') return '0x4';
+    if (method === 'eth_getLogs') { ranges.push([params[0].fromBlock, params[0].toBlock]); return []; }
+    return { hash: `0x${'a'.repeat(64)}` };
+  };
+  await monitor.scan();
+  assert.deepEqual(ranges, [['0x0', '0x1'], ['0x2', '0x3'], ['0x4', '0x4']]);
+  assert.deepEqual(cursors, [1, 3, 4]);
+});

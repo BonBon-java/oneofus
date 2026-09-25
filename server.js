@@ -11,10 +11,12 @@ function send(response, status, body) { response.writeHead(status, { ...security
 function readJson(request, limit = 10_000) { return new Promise((resolve, reject) => { let size = 0; const chunks = []; let done = false; const fail = (error) => { if (!done) { done = true; reject(error); } }; request.on('data', (chunk) => { size += chunk.length; if (size > limit) { request.destroy(); fail(new Error('Request too large.')); return; } chunks.push(chunk); }); request.on('error', fail); request.on('end', () => { if (done) return; try { done = true; resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')); } catch { fail(new Error('Invalid JSON.')); } }); }); }
 function serveStatic(urlPath, response) { let decoded; try { decoded = decodeURIComponent(urlPath); } catch { return false; } const relativePath = decoded === '/' ? 'index.html' : decoded.replace(/^\/+/, ''); if (!publicFiles.has(relativePath) && !relativePath.startsWith('assets/')) return false; const file = path.resolve(root, relativePath); if (!file.startsWith(`${root}${path.sep}`) || !fs.existsSync(file) || !fs.statSync(file).isFile()) return false; response.writeHead(200, { ...securityHeaders, 'content-type': contentTypes[path.extname(file)] || 'application/octet-stream' }); fs.createReadStream(file).pipe(response); return true; }
 function requestLimiter({ limit = 12, windowMs = 60_000, maxKeys = 10_000 } = {}) { const requests = new Map(); return (request) => { const now = Date.now(); const key = request.socket.remoteAddress || 'unknown'; const record = requests.get(key); if (!record || record.resetAt <= now) { if (!record && requests.size >= maxKeys) { for (const [candidate, value] of requests) if (value.resetAt <= now) requests.delete(candidate); if (requests.size >= maxKeys) return false; } requests.set(key, { count: 1, resetAt: now + windowMs }); return true; } record.count += 1; return record.count <= limit; }; }
-function createServer({ repository, service }) {
+function createServer({ repository, service, health = null }) {
   const allowOrderRequest = requestLimiter();
   return http.createServer(async (request, response) => { try {
     const url = new URL(request.url, 'http://localhost');
+    if (request.method === 'GET' && url.pathname === '/healthz') return send(response, 200, { status: 'ok' });
+    if (request.method === 'GET' && url.pathname === '/readyz') { const readiness = health ? await health() : { ready: true }; return send(response, readiness.ready ? 200 : 503, readiness); }
     if (request.method === 'POST' && url.pathname === '/api/orders') { if (!allowOrderRequest(request)) return send(response, 429, { error: 'Too many order requests. Please try again shortly.' }); return send(response, 201, service.publicOrder(await service.create(await readJson(request)))); }
     if (request.method === 'GET' && url.pathname === '/api/site') return send(response, 200, await repository.siteSummary());
     if (request.method === 'GET' && url.pathname === '/api/draws') return send(response, 200, { draws: await repository.draws() });
@@ -28,10 +30,15 @@ async function main() {
   const target = validateRuntimeConfiguration();
   const receivingAddress = normalizeAddress(process.env.ONE_OF_US_RECEIVING_ADDRESS);
   const pool = createDatabase(); await migrate(pool); await seedDemoDraws(pool); const repository = new PostgresRepository(pool); const service = new PaymentService(repository, receivingAddress);
-  const server = createServer({ repository, service });
+  let monitor; let scheduler;
+  const server = createServer({ repository, service, health: async () => ({ ready: Boolean(monitor?.status().ready), database: 'ready', rpc: monitor?.status() || null }) });
   server.listen(Number(process.env.PORT || 4174), () => console.log(`One of Us payment API listening on ${process.env.PORT || 4174}`));
-  new ArbitrumPaymentMonitor({ repository, service, rpcUrl: process.env.ARBITRUM_RPC_URL, receivingAddress, target }).start();
-  if (process.env.ONE_OF_US_SCHEDULER_ENABLED === 'true') new RoundLifecycleScheduler(new RoundLifecycleOrchestrator({ repository })).start();
+  monitor = new ArbitrumPaymentMonitor({ repository, service, rpcUrls: target.rpcUrls, receivingAddress, target }); monitor.start();
+  if (process.env.ONE_OF_US_SCHEDULER_ENABLED === 'true') { scheduler = new RoundLifecycleScheduler(new RoundLifecycleOrchestrator({ repository })); scheduler.start(); }
+  let stopping = false;
+  const shutdown = async () => { if (stopping) return; stopping = true; monitor.stop(); scheduler?.stop(); await new Promise((resolve) => server.close(resolve)); await pool.end(); };
+  process.once('SIGTERM', () => shutdown().catch((error) => { console.error(error.message); process.exitCode = 1; }));
+  process.once('SIGINT', () => shutdown().catch((error) => { console.error(error.message); process.exitCode = 1; }));
 }
 if (require.main === module) main().catch((error) => { console.error(error.message); process.exitCode = 1; });
 module.exports = { createServer };
