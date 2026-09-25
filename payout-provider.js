@@ -1,6 +1,7 @@
 'use strict';
 const { ethers } = require('ethers');
-const { payoutTargetConfig } = require('./payout-config.js');
+const { payoutTargetConfig, stagingKmsSignerConfig } = require('./payout-config.js');
+const { AwsKmsEthereumSigner, createAwsKmsClient } = require('./aws-kms-signer.js');
 const TRANSFER_ABI = ['function transfer(address to, uint256 value) returns (bool)', 'function balanceOf(address owner) view returns (uint256)', 'function decimals() view returns (uint8)', 'event Transfer(address indexed from, address indexed to, uint256 value)'];
 class PayoutPreflightError extends Error { constructor(code) { super(code); this.name = 'PayoutPreflightError'; this.code = code; } }
 
@@ -8,7 +9,7 @@ class EthersTestnetPayoutProvider {
   constructor({ env = process.env, rpcUrl, privateKey, target, provider, wallet } = {}) {
     this.target = target || payoutTargetConfig({ ...env, ...(rpcUrl ? { ONE_OF_US_PAYOUT_RPC_URL: rpcUrl } : {}) });
     const signerKey = privateKey === undefined ? env.ONE_OF_US_PAYOUT_PRIVATE_KEY : privateKey;
-    if (!signerKey) throw new Error('ONE_OF_US_PAYOUT_PRIVATE_KEY must be configured for testnet payout execution.');
+    if (!wallet && !signerKey) throw new Error('ONE_OF_US_PAYOUT_PRIVATE_KEY must be configured for testnet payout execution.');
     this.provider = provider || new ethers.JsonRpcProvider(this.target.rpcUrl); this.wallet = wallet || new ethers.Wallet(signerKey, this.provider); this.token = ethers.getAddress(this.target.tokenAddress);
   }
   async validateNetworkAndToken() {
@@ -74,4 +75,27 @@ class EthersTestnetPayoutProvider {
     return { confirmed: true, state: 'confirmed', blockNumber: receipt.blockNumber, networkFeeWei: (receipt.gasUsed * receipt.gasPrice).toString() };
   }
 }
-module.exports = { EthersTestnetPayoutProvider, EthersArbitrumPayoutProvider: EthersTestnetPayoutProvider, PayoutPreflightError, TRANSFER_ABI };
+
+class AwsKmsStagingPayoutProvider extends EthersTestnetPayoutProvider {
+  constructor({ env = process.env, kms, kmsSigner, ...options } = {}) {
+    const kmsConfig = stagingKmsSignerConfig(env);
+    const target = options.target || payoutTargetConfig({ ...env, ...(options.rpcUrl ? { ONE_OF_US_PAYOUT_RPC_URL: options.rpcUrl } : {}) });
+    if (target.chainId !== 421614) throw new Error('AWS KMS payout signing is limited to Arbitrum Sepolia staging.');
+    const signer = kmsSigner || new AwsKmsEthereumSigner({ kms: kms || createAwsKmsClient({ region: kmsConfig.region }), keyId: kmsConfig.keyId, expectedAddress: kmsConfig.expectedAddress, region: kmsConfig.region, expectedKeyArn: kmsConfig.expectedKeyArn });
+    const wallet = {
+      getAddress: async () => (await signer.identity()).address,
+      signTransaction: async (transaction) => (await signer.signTransaction(transaction)).signedTransaction
+    };
+    super({ env, ...options, target, wallet });
+    this.kmsSigner = signer;
+  }
+  async identity() { const config = await this.validateNetworkAndToken(); return { address: config.sender, mode: 'staging-aws-kms' }; }
+}
+
+function createPayoutProvider(options = {}) {
+  return options.env?.ONE_OF_US_PAYOUT_SIGNER_MODE === 'aws-kms' || (!options.env && process.env.ONE_OF_US_PAYOUT_SIGNER_MODE === 'aws-kms')
+    ? new AwsKmsStagingPayoutProvider(options)
+    : new EthersTestnetPayoutProvider(options);
+}
+
+module.exports = { EthersTestnetPayoutProvider, EthersArbitrumPayoutProvider: EthersTestnetPayoutProvider, AwsKmsStagingPayoutProvider, createPayoutProvider, PayoutPreflightError, TRANSFER_ABI };

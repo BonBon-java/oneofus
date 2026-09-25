@@ -38,4 +38,13 @@ function payoutTargetConfig(env = process.env) {
   return { mode: 'testnet', rpcUrl: env.ONE_OF_US_PAYOUT_RPC_URL, chainId, tokenAddress, decimals };
 }
 
-module.exports = { APPROVED_TEST_CHAIN_IDS, payoutTargetConfig, productionSignerConfig };
+function stagingKmsSignerConfig(env = process.env) {
+  if (env.ONE_OF_US_PAYOUT_SIGNER_MODE !== 'aws-kms') return { mode: 'disabled', enabled: false };
+  if (env.ONE_OF_US_PAYOUT_MODE !== 'testnet' || env.ONE_OF_US_PAYOUT_CHAIN_ID !== '421614') throw new Error('AWS KMS payout signing is limited to Arbitrum Sepolia staging.');
+  for (const name of ['AWS_REGION', 'AWS_KMS_KEY_ID', 'AWS_KMS_EXPECTED_KEY_ARN', 'PAYOUT_EXPECTED_SIGNER_ADDRESS']) if (!env[name]) throw new Error(`${name} is required for AWS KMS staging payout signing.`);
+  const expectedAddress = ethers.getAddress(env.PAYOUT_EXPECTED_SIGNER_ADDRESS);
+  if (expectedAddress === ethers.ZeroAddress) throw new Error('PAYOUT_EXPECTED_SIGNER_ADDRESS must not be the zero address.');
+  return { mode: 'staging-aws-kms', enabled: true, region: env.AWS_REGION, keyId: env.AWS_KMS_KEY_ID, expectedKeyArn: env.AWS_KMS_EXPECTED_KEY_ARN, expectedAddress };
+}
+
+module.exports = { APPROVED_TEST_CHAIN_IDS, payoutTargetConfig, productionSignerConfig, stagingKmsSignerConfig };

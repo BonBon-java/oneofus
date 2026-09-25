@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { settlementAmounts } = require('../settlement-domain.js');
 const { SettlementService } = require('../settlement-service.js');
-const { EthersTestnetPayoutProvider } = require('../payout-provider.js');
+const { EthersTestnetPayoutProvider, AwsKmsStagingPayoutProvider } = require('../payout-provider.js');
 const { payoutTargetConfig } = require('../payout-config.js');
 const { ethers } = require('ethers');
 
@@ -38,6 +38,17 @@ test('a provider failure before broadcast leaves no automatic second-send path',
 test('payout signer fails closed when the server-only private key is missing', () => {
   const env = { ONE_OF_US_PAYOUT_MODE: 'testnet', ONE_OF_US_PAYOUT_RPC_URL: 'http://localhost:8545', ONE_OF_US_PAYOUT_CHAIN_ID: '31337', ONE_OF_US_PAYOUT_TOKEN_ADDRESS: '0x0000000000000000000000000000000000000001' };
   assert.throws(() => new EthersTestnetPayoutProvider({ env, privateKey: '' }), /ONE_OF_US_PAYOUT_PRIVATE_KEY/);
+});
+
+test('AWS KMS staging provider accepts no raw private key and rejects non-Sepolia targets', () => {
+  const env = {
+    ONE_OF_US_PAYOUT_MODE: 'testnet', ONE_OF_US_PAYOUT_RPC_URL: 'https://sepolia.example.test/rpc', ONE_OF_US_PAYOUT_CHAIN_ID: '421614', ONE_OF_US_PAYOUT_TOKEN_ADDRESS: '0x0000000000000000000000000000000000000001',
+    ONE_OF_US_PAYOUT_SIGNER_MODE: 'aws-kms', AWS_REGION: 'eu-north-1', AWS_KMS_KEY_ID: 'alias/oneofus-kms-smoke-test', AWS_KMS_EXPECTED_KEY_ARN: 'arn:aws:kms:eu-north-1:123456789012:key/test-key', PAYOUT_EXPECTED_SIGNER_ADDRESS: '0x0000000000000000000000000000000000000002'
+  };
+  const kmsSigner = { identity: async () => ({ address: env.PAYOUT_EXPECTED_SIGNER_ADDRESS }), signTransaction: async () => ({ signedTransaction: '0x01' }) };
+  const provider = new AwsKmsStagingPayoutProvider({ env, kmsSigner });
+  assert.equal('privateKey' in provider.wallet, false, 'internal signer state must not expose a raw private key');
+  assert.throws(() => new AwsKmsStagingPayoutProvider({ env: { ...env, ONE_OF_US_PAYOUT_CHAIN_ID: '31337' }, kmsSigner }), /Arbitrum Sepolia/);
 });
 
 test('payout target rejects disabled mode, mainnet, and production USDT before a provider exists', () => {

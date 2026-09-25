@@ -36,3 +36,15 @@ test('production never accepts a testnet signer, and staging payout is bound to 
   const production = { ...staging, ONE_OF_US_ENV: 'production', ONE_OF_US_PAYMENT_MODE: 'mainnet', ONE_OF_US_PAYOUT_MODE: 'testnet', ARBITRUM_RPC_URL: 'https://arb1.example.test/rpc' };
   assert.throws(() => validateRuntimeConfiguration(production), /forbidden in production/);
 });
+
+test('AWS KMS payout signing is explicit and confined to Arbitrum Sepolia staging', () => {
+  const staging = {
+    DATABASE_URL: base.DATABASE_URL, ONE_OF_US_RECEIVING_ADDRESS: base.ONE_OF_US_RECEIVING_ADDRESS,
+    ONE_OF_US_ENV: 'staging', ONE_OF_US_PAYMENT_MODE: 'staging', ARBITRUM_RPC_URL: 'https://sepolia.example.test/rpc', ONE_OF_US_PAYMENT_TOKEN_ADDRESS: `0x${'2'.repeat(40)}`,
+    ONE_OF_US_PAYOUT_MODE: 'testnet', ONE_OF_US_PAYOUT_RPC_URL: 'https://sepolia.example.test/rpc', ONE_OF_US_PAYOUT_CHAIN_ID: '421614', ONE_OF_US_PAYOUT_TOKEN_ADDRESS: `0x${'2'.repeat(40)}`,
+    ONE_OF_US_PAYOUT_SIGNER_MODE: 'aws-kms', AWS_REGION: 'eu-north-1', AWS_KMS_KEY_ID: 'alias/oneofus-kms-smoke-test', AWS_KMS_EXPECTED_KEY_ARN: 'arn:aws:kms:eu-north-1:123456789012:key/test-key', PAYOUT_EXPECTED_SIGNER_ADDRESS: `0x${'3'.repeat(40)}`
+  };
+  assert.equal(validateRuntimeConfiguration(staging).payoutSigner.mode, 'staging-aws-kms');
+  assert.throws(() => validateRuntimeConfiguration({ ...staging, AWS_KMS_EXPECTED_KEY_ARN: '' }), /AWS_KMS_EXPECTED_KEY_ARN/);
+  assert.throws(() => validateRuntimeConfiguration({ ...staging, ONE_OF_US_PAYOUT_CHAIN_ID: '31337' }), /limited to Arbitrum Sepolia staging/);
+});
