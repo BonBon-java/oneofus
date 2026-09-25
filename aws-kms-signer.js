@@ -2,6 +2,19 @@
 const { ethers } = require('ethers');
 const { ethereumAddressFromSpki, recoverKmsSignature } = require('./kms-ethereum.js');
 
+function createAwsKmsClient({ region }) {
+  if (!region) throw new Error('AWS KMS region must be explicit.');
+  // Uses the normal AWS SDK credential provider chain: workload identity,
+  // environment, profile or instance role. Access keys are never read from
+  // One of Us configuration files.
+  const { KMSClient, GetPublicKeyCommand, SignCommand } = require('@aws-sdk/client-kms');
+  const client = new KMSClient({ region });
+  return {
+    getPublicKey: (input) => client.send(new GetPublicKeyCommand(input)),
+    sign: (input) => client.send(new SignCommand(input))
+  };
+}
+
 // The client is injected so this module is testable without AWS credentials. In
 // deployment it is an AWS SDK v3 KMS client with GetPublicKeyCommand/SignCommand.
 class AwsKmsEthereumSigner {
@@ -10,4 +23,4 @@ class AwsKmsEthereumSigner {
   async signDigest(digest) { await this.identity(); const value = ethers.getBytes(digest); if (value.length !== 32) throw new Error('Ethereum signing requires a 32-byte digest.'); const response = await this.kms.sign({ KeyId: this.keyId, Message: value, MessageType: 'DIGEST', SigningAlgorithm: 'ECDSA_SHA_256' }); return recoverKmsSignature(digest, response.Signature || response.signature, this.expectedAddress); }
   async signTransaction(transaction) { const tx = ethers.Transaction.from(transaction); const digest = ethers.keccak256(tx.unsignedSerialized); const signature = await this.signDigest(digest); const signed = tx.clone(); signed.signature = signature; const recovered = ethers.recoverAddress(digest, signature); if (recovered !== this.expectedAddress) throw new Error('Signed transaction failed local signer verification.'); return { signedTransaction: signed.serialized, transactionHash: signed.hash, signer: recovered }; }
 }
-module.exports = { AwsKmsEthereumSigner };
+module.exports = { AwsKmsEthereumSigner, createAwsKmsClient };

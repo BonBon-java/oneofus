@@ -14,6 +14,8 @@ Use workload identity or mTLS between backend and signer; a scoped rotating bear
 
 The implementation parses KMS SPKI public keys, derives the Ethereum address, decodes DER ECDSA signatures, normalizes low-s, recovers the signer and verifies it locally before a transaction can be broadcast. Local tests use an equivalent secp256k1 fixture. No AWS account was called by those tests.
 
+With an approved non-production KMS key and normal AWS workload/profile credentials, run `npm run payout:kms-smoke`. It calls only `GetPublicKey` and `Sign` over a fixed digest; it never broadcasts a blockchain transaction.
+
 ## Economics and operations
 
 For each settlement, winner amount is `floor(gross * 85 / 100)` and project gross fee is the remainder. Gas is stored in wei separately: it never reduces the winner transfer and is not converted or subtracted from USDT without an explicit price source. Treasury sweep is a separate immutable leg, sourced from settlement accounting, never `balanceOf(wallet)`.
