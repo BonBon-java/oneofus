@@ -59,6 +59,9 @@ function selectPaymentMatch(exactOrders, aliasOrders) {
 class PostgresRepository {
   constructor(pool, { payoutTarget = () => payoutTargetConfig() } = {}) { this.pool = pool; this.payoutTarget = payoutTarget; }
   async transaction(work) { const client = await this.pool.connect(); try { await client.query('BEGIN'); const result = await work(client); await client.query('COMMIT'); return result; } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); } }
+  async assertOperationalEnabled(db, control) { const result = await db.query('SELECT enabled FROM operational_controls WHERE control_name = $1 FOR SHARE', [control]); if (!result.rowCount || !result.rows[0].enabled) throw new Error(`Operational control ${control} is paused.`); }
+  async operationalControls() { const result = await this.pool.query('SELECT control_name, enabled, updated_at, updated_by FROM operational_controls ORDER BY control_name'); return result.rows.map((row) => ({ name: row.control_name, enabled: row.enabled, updatedAt: row.updated_at, updatedBy: row.updated_by })); }
+  async setOperationalControl(control, enabled, actor) { if (!['orders', 'payment_finalization', 'draws', 'payouts'].includes(control)) throw new Error('Unknown operational control.'); if (!actor || actor.length > 128) throw new Error('Operator identity is required.'); return this.transaction(async (db) => { await db.query('UPDATE operational_controls SET enabled=$1, updated_at=now(), updated_by=$2 WHERE control_name=$3', [enabled, actor, control]); await db.query("INSERT INTO operational_audit_events (id,event_type,actor,entity_type,entity_id,details) VALUES ($1,$2,$3,'operational_control',$4,$5)", [crypto.randomUUID(), enabled ? 'control_enabled' : 'control_paused', actor, control, JSON.stringify({ enabled })]); }); }
   async roundById(roundId) { const result = await this.pool.query('SELECT * FROM rounds WHERE id = $1', [roundId]); return result.rows[0] || null; }
   async settlementForRound(roundId) { const result = await this.pool.query('SELECT id FROM settlements WHERE round_id = $1', [roundId]); return result.rows[0]?.id || null; }
   async runnableRoundIds(limit = 50) {
@@ -146,6 +149,7 @@ class PostgresRepository {
   }
   async createDrawSnapshot(roundId) {
     return this.transaction(async (db) => {
+      await this.assertOperationalEnabled(db, 'draws');
       const result = await db.query('SELECT * FROM rounds WHERE id = $1 FOR UPDATE', [roundId]);
       if (!result.rowCount) throw new Error('Round not found.');
       const round = result.rows[0];
@@ -239,6 +243,7 @@ class PostgresRepository {
   async payoutIntent(settlementId) { const result = await this.pool.query('SELECT * FROM payout_intents WHERE settlement_id = $1', [settlementId]); if (!result.rowCount) throw new Error('Settlement has no payout intent.'); return { ...this.publicPayoutIntent(result.rows[0]), token_address: result.rows[0].token_address, signedTransaction: result.rows[0].signed_transaction }; }
   async preparePayout(settlementId, provider) {
     return this.transaction(async (db) => {
+      await this.assertOperationalEnabled(db, 'payouts');
       const intent = await db.query('SELECT i.*, s.status AS settlement_status FROM payout_intents i JOIN settlements s ON s.id = i.settlement_id WHERE i.settlement_id = $1 FOR UPDATE', [settlementId]); if (!intent.rowCount) throw new Error('Settlement has no payout intent.'); const row = intent.rows[0];
       if (row.status === 'confirmed' || row.status === 'broadcast' || row.signed_transaction) return { ...this.publicPayoutIntent(row), token_address: row.token_address, signedTransaction: row.signed_transaction };
       let signed;
@@ -268,6 +273,7 @@ class PostgresRepository {
   }
   async createOrder(data) {
     return this.transaction(async (db) => {
+      await this.assertOperationalEnabled(db, 'orders');
       await db.query("SELECT pg_advisory_xact_lock(hashtext('oneofus-payment-code-allocation'))");
       await db.query('UPDATE payment_code_reservations SET active = false WHERE active AND cooldown_until <= now()');
       await db.query('UPDATE payment_amount_reservations SET active = false WHERE active AND cooldown_until <= now()');
@@ -315,6 +321,7 @@ class PostgresRepository {
   async pendingPaymentBlocks(head, confirmations) { const result = await this.pool.query(`SELECT DISTINCT p.block_number FROM payments p JOIN orders o ON o.id = p.order_id WHERE o.payment_status = 'payment_detected' AND $1 - p.block_number + 1 >= $2`, [head, confirmations]); return result.rows.map((row) => Number(row.block_number)); }
   async confirmPayments(head, confirmations, canonicalBlockHashes = null) {
     return this.transaction(async (db) => {
+      await this.assertOperationalEnabled(db, 'payment_finalization');
       const orders = await db.query(`SELECT o.*, p.block_hash FROM orders o JOIN payments p ON p.order_id = o.id AND p.payment_status = 'payment_detected' WHERE o.payment_status = 'payment_detected' AND $1 - o.block_number + 1 >= $2 FOR UPDATE OF o, p`, [head, confirmations]);
       if (!orders.rowCount) return [];
       const counter = await db.query("SELECT next_value FROM app_counters WHERE name = 'ticket' FOR UPDATE"); let next = BigInt(counter.rows[0].next_value); const completed = [];

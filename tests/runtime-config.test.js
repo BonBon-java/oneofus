@@ -18,3 +18,12 @@ test('mainnet monitoring requires a configured HTTPS RPC endpoint', () => {
   assert.equal(validateRuntimeConfiguration(mainnet).chainId, 42161);
   assert.throws(() => validateRuntimeConfiguration({ ...mainnet, ARBITRUM_RPC_URL: 'http://arb1.example.test/rpc' }), /HTTPS/);
 });
+
+test('staging is pinned to Arbitrum Sepolia and cannot reuse the production token', () => {
+  const staging = { DATABASE_URL: base.DATABASE_URL, ONE_OF_US_RECEIVING_ADDRESS: base.ONE_OF_US_RECEIVING_ADDRESS, ONE_OF_US_ENV: 'staging', ONE_OF_US_PAYMENT_MODE: 'staging', ARBITRUM_RPC_URL: 'https://sepolia.example.test/rpc', ONE_OF_US_PAYMENT_TOKEN_ADDRESS: `0x${'2'.repeat(40)}`, ARBITRUM_RPC_FALLBACK_URL: 'https://fallback.example.test/rpc' };
+  const target = validateRuntimeConfiguration(staging);
+  assert.equal(target.chainId, 421614);
+  assert.deepEqual(target.rpcUrls, [staging.ARBITRUM_RPC_URL, staging.ARBITRUM_RPC_FALLBACK_URL]);
+  assert.throws(() => validateRuntimeConfiguration({ ...staging, ONE_OF_US_PAYMENT_TOKEN_ADDRESS: '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9' }), /non-production/);
+  assert.throws(() => validateRuntimeConfiguration({ ...staging, ONE_OF_US_ENV: 'production' }), /Production environment/);
+});

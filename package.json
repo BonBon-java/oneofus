@@ -17,7 +17,8 @@
     "round:process": "node scripts/process-round.js",
     "start": "node server.js",
     "db:migrate": "node scripts/migrate.js",
-    "db:import-json": "node scripts/import-json.js"
+    "db:import-json": "node scripts/import-json.js",
+    "operations": "node scripts/operations.js"
   },
   "repository": {
     "type": "git",

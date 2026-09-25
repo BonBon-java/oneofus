@@ -13,6 +13,12 @@ set `ONE_OF_US_RECEIVING_ADDRESS` to the One of Us receiving wallet and set
 served on port 4174 by default; host the static files behind the same origin or
 proxy `/api` to it. `ARBITRUM_RPC_URL` is required for chain monitoring.
 
+For deployment profiles, copy `.env.staging.example` or
+`.env.production.example` into a secret manager rather than Git. The staging
+gate, recovery procedure, RPC failover behavior, and explicit mainnet-payout
+boundary are documented in [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md)
+and [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md).
+
 ## Checks
 
 The payment flow creates server-authoritative pending orders and polls their
