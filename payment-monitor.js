@@ -29,7 +29,12 @@ class ArbitrumPaymentMonitor {
     if (chainId !== this.target.chainId) throw new Error(`RPC chain ID (${chainId}) does not match ${this.target.network} (${this.target.chainId}).`);
   }
   async recordLog(log) { return this.repository.recordTransfer(log, { tokenAddress: this.target.tokenAddress, receivingAddress: this.receivingAddress }); }
-  async confirm(head) { return this.repository.confirmPayments(head, this.confirmations); }
+  async confirm(head) {
+    const blocks = await this.repository.pendingPaymentBlocks(head, this.confirmations);
+    const canonical = new Map();
+    for (const blockNumber of blocks) { const block = await this.rpc('eth_getBlockByNumber', [hex(blockNumber), false]); if (!block?.hash) throw new Error('RPC returned an invalid canonical block.'); canonical.set(blockNumber, block.hash.toLowerCase()); }
+    return this.repository.confirmPayments(head, this.confirmations, canonical);
+  }
   start() {
     Promise.all([this.verifyNetwork(), this.verifyTokenDecimals()])
       .then(() => {

@@ -39,10 +39,7 @@ integration('PostgreSQL: snapshot is idempotent, includes free tickets, and pres
   await assert.rejects(pool.query(`INSERT INTO draw_snapshot_ranges (id,snapshot_id,sequence_number,ledger_entry_id,participant_id,payout_wallet,ticket_type,cause,start_ticket,end_ticket,source_start_ticket,source_end_ticket,ticket_count) VALUES ($1,$2,99,$3,$4,$5,'free','test',99,99,99,99,1)`, [id(), first.id, id(), row.participantA, `0x${'3'.repeat(40)}`]), /finalized/);
 });
 
-integration('PostgreSQL: overlapping ledger source ranges reject snapshot creation without changing round state', async (t) => {
+integration('PostgreSQL: overlapping ledger source ranges are rejected by the database before snapshot creation', async (t) => {
   const pool = new Pool({ connectionString: databaseUrl }); await migrate(pool); t.after(() => pool.end());
-  const row = await readyFixture(pool, { overlap: true }); const repository = new PostgresRepository(pool);
-  await assert.rejects(repository.createDrawSnapshot(row.roundId), /overlap/);
-  assert.equal((await pool.query('SELECT status FROM rounds WHERE id = $1', [row.roundId])).rows[0].status, 'locked');
-  assert.equal((await pool.query('SELECT 1 FROM draw_snapshots WHERE round_id = $1', [row.roundId])).rowCount, 0);
+  await assert.rejects(readyFixture(pool, { overlap: true }), /ticket_ledger_entries_no_overlap/);
 });

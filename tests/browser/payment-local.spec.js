@@ -49,7 +49,8 @@ test('GET IN → real MockUSDT → monitor → confirmed ledger → UI, reload a
     const modal = page.locator('#get-in-modal');
     await expect(modal).toBeVisible();
     const walletInput = page.locator('[data-payout-wallet]');
-    await walletInput.fill('invalid');
+    await walletInput.click();
+    await walletInput.pressSequentially('invalid');
     await expect(walletInput).toHaveValue('invalid');
     await expect(page.locator('[data-wallet-feedback]')).toContainText('valid EVM');
     await expect(page.locator('[data-continue]')).toBeDisabled();

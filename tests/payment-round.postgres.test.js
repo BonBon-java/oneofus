@@ -17,7 +17,7 @@ test('payments across UTC close: rollover visibility, ledger provenance, late co
   const input = { payoutWallet: `0x${crypto.randomBytes(20).toString('hex')}`, tickets: 2, source: 'other' };
   const first = await service.create(input);
   async function detect(order) {
-    return repository.recordTransfer({ transactionHash: `0x${crypto.randomBytes(32).toString('hex')}`, logIndex: '0x0', blockNumber: '0xa', data: `0x${BigInt(order.expected_payment_amount).toString(16)}`, topics: [] }, { tokenAddress: USDT_TOKEN_ADDRESS, receivingAddress });
+    return repository.recordTransfer({ transactionHash: `0x${crypto.randomBytes(32).toString('hex')}`, blockHash: `0x${crypto.randomBytes(32).toString('hex')}`, logIndex: '0x0', blockNumber: '0xa', data: `0x${BigInt(order.expected_payment_amount).toString(16)}`, topics: [null, `0x${'1'.repeat(40).padStart(64, '0')}`] }, { tokenAddress: USDT_TOKEN_ADDRESS, receivingAddress });
   }
   await detect(first); await repository.confirmPayments(12, 3);
   const pending = await service.create({ ...input, tickets: 8, participantId: first.participant_id });

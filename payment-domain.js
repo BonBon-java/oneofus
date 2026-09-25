@@ -63,9 +63,14 @@ function paymentAmountsFor(tickets, code) {
 function formatUnits(amount) { const value = BigInt(amount); const fraction = (value % TOKEN_UNITS).toString().padStart(USDT_DECIMALS, '0').replace(/0+$/, ''); return fraction ? `${value / TOKEN_UNITS}.${fraction}` : `${value / TOKEN_UNITS}`; }
 function normalizeAddress(value) { const address = String(value || '').trim().toLowerCase(); if (!/^0x[0-9a-f]{40}$/.test(address)) throw new Error('A valid EVM address is required.'); return address; }
 function validateOrderInput(input, sources) {
-  const participantName = String(input.displayName || input.participantName || 'Anonymous').trim().slice(0, 28) || 'Anonymous';
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Order input must be an object.');
+  const rawName = String(input.displayName || input.participantName || 'Anonymous').trim();
+  if (rawName.length > 28) throw new Error('Display name must be at most 28 characters.');
+  const participantName = rawName || 'Anonymous';
   const payoutWallet = normalizeAddress(input.payoutWallet);
-  const ticketQuantity = Number.parseInt(input.tickets ?? input.ticketQuantity, 10);
+  const rawTickets = input.tickets ?? input.ticketQuantity;
+  if (!(typeof rawTickets === 'number' && Number.isSafeInteger(rawTickets)) && !(typeof rawTickets === 'string' && /^(?:0|[1-9][0-9]*)$/.test(rawTickets))) throw new Error('Ticket quantity must be a whole number.');
+  const ticketQuantity = Number(rawTickets);
   const sendingSource = String(input.source || input.sendingSource || '');
   const source = sources.find((item) => item.id === sendingSource && item.enabled);
   if (!source) throw new Error('Select an available payment source.');
