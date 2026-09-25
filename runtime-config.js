@@ -2,7 +2,7 @@
 
 const { normalizeAddress } = require('./payment-domain.js');
 const { paymentNetwork } = require('./payment-network.js');
-const { payoutTargetConfig } = require('./payout-config.js');
+const { payoutTargetConfig, productionSignerConfig } = require('./payout-config.js');
 
 function integerSetting(env, name, { minimum, maximum }) {
   const value = env[name];
@@ -44,7 +44,8 @@ function validateRuntimeConfiguration(env = process.env) {
       throw new Error('Staging payout target must use the configured staging payment chain and token.');
     }
   }
-  return { ...target, environment, rpcUrls: [env.ARBITRUM_RPC_URL, env.ARBITRUM_RPC_FALLBACK_URL].filter(Boolean) };
+  const payoutSigner = environment === 'production' ? productionSignerConfig(env) : { mode: env.ONE_OF_US_PAYOUT_MODE === 'testnet' ? 'staging-raw-key' : 'disabled', enabled: env.ONE_OF_US_PAYOUT_MODE === 'testnet' };
+  return { ...target, environment, payoutSigner, rpcUrls: [env.ARBITRUM_RPC_URL, env.ARBITRUM_RPC_FALLBACK_URL].filter(Boolean) };
 }
 
 module.exports = { validateRuntimeConfiguration };

@@ -20,7 +20,9 @@
     "db:import-json": "node scripts/import-json.js",
     "operations": "node scripts/operations.js",
     "staging:smoke": "node scripts/staging-smoke.js",
-    "staging:token:deploy": "node scripts/deploy-staging-usdt.js"
+    "staging:token:deploy": "node scripts/deploy-staging-usdt.js",
+    "payout:dry-run": "node scripts/payout-dry-run.js",
+    "payout:signer-smoke": "node scripts/signer-smoke.js"
   },
   "repository": {
     "type": "git",

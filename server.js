@@ -36,7 +36,7 @@ async function main() {
   const server = createServer({ repository, service, paymentConfig: { network: target.network, staging: target.chainId === 421614 }, health: async () => {
     const rpc = monitor?.status() || null;
     try { await pool.query('SELECT 1'); } catch { return { ready: false, database: 'unavailable', rpc }; }
-    return { ready: Boolean(rpc?.ready), database: 'ready', rpc };
+    return { ready: Boolean(rpc?.ready), database: 'ready', rpc, payout: { ready: Boolean(target.payoutSigner?.enabled), mode: target.payoutSigner?.mode || 'disabled', reason: target.payoutSigner?.enabled ? null : 'payouts_fail_closed' } };
   } });
   server.listen(Number(process.env.PORT || 4174), () => console.log(`One of Us payment API listening on ${process.env.PORT || 4174}`));
   monitor = new ArbitrumPaymentMonitor({ repository, service, rpcUrls: target.rpcUrls, receivingAddress, target }); monitor.start();

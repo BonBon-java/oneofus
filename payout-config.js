@@ -7,6 +7,20 @@ const { USDT_DECIMALS, USDT_TOKEN_ADDRESS } = require('./payment-domain.js');
 // tests. Arbitrum Sepolia is the only public network allowed by this service.
 const APPROVED_TEST_CHAIN_IDS = new Set([31337, 421614]);
 
+function productionSignerConfig(env = process.env) {
+  const rawKeyVariables = ['ONE_OF_US_PAYOUT_PRIVATE_KEY', 'PRIVATE_KEY', 'PAYOUT_PRIVATE_KEY'];
+  if (rawKeyVariables.some((name) => env[name])) throw new Error('Raw private-key payout configuration is forbidden in production.');
+  const enabled = env.PAYOUT_ENABLED === 'true';
+  const mode = env.PAYOUT_SIGNER_MODE || 'disabled';
+  if (!enabled) return { mode: 'disabled', enabled: false };
+  if (mode !== 'production-external') throw new Error('Production payout requires PAYOUT_SIGNER_MODE=production-external.');
+  if (!env.PAYOUT_EXPECTED_SIGNER_ADDRESS) throw new Error('PAYOUT_EXPECTED_SIGNER_ADDRESS is required when production payout is enabled.');
+  if (!env.PAYOUT_SIGNER_URL || !env.PAYOUT_SIGNER_AUTH_TOKEN) throw new Error('Production payout requires an isolated signer URL and credential.');
+  const expectedAddress = ethers.getAddress(env.PAYOUT_EXPECTED_SIGNER_ADDRESS); if (expectedAddress === ethers.ZeroAddress) throw new Error('PAYOUT_EXPECTED_SIGNER_ADDRESS must not be the zero address.');
+  for (const name of ['MAX_SINGLE_PAYOUT_BASE_UNITS', 'MIN_GAS_BALANCE_WEI']) if (!/^[1-9][0-9]*$/.test(env[name] || '')) throw new Error(`${name} must be a positive integer when production payout is enabled.`);
+  return { mode, enabled: true, expectedAddress, url: env.PAYOUT_SIGNER_URL, maxSinglePayoutBaseUnits: env.MAX_SINGLE_PAYOUT_BASE_UNITS, minGasBalanceWei: env.MIN_GAS_BALANCE_WEI };
+}
+
 function payoutTargetConfig(env = process.env) {
   if (env.ONE_OF_US_PAYOUT_MODE !== 'testnet') throw new Error('Payout execution is disabled. Set ONE_OF_US_PAYOUT_MODE=testnet only for an approved test environment.');
   if (!env.ONE_OF_US_PAYOUT_RPC_URL) throw new Error('ONE_OF_US_PAYOUT_RPC_URL must be configured for testnet payout execution.');
@@ -21,4 +35,4 @@ function payoutTargetConfig(env = process.env) {
   return { mode: 'testnet', rpcUrl: env.ONE_OF_US_PAYOUT_RPC_URL, chainId, tokenAddress, decimals };
 }
 
-module.exports = { APPROVED_TEST_CHAIN_IDS, payoutTargetConfig };
+module.exports = { APPROVED_TEST_CHAIN_IDS, payoutTargetConfig, productionSignerConfig };

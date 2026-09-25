@@ -239,13 +239,13 @@ class PostgresRepository {
     const settlement = await db.query('SELECT * FROM settlements WHERE id = $1', [settlementId]); const row = settlement.rows[0]; const intent = await db.query('SELECT * FROM payout_intents WHERE settlement_id = $1', [settlementId]);
     return { id: row.id, roundId: row.round_id, drawResultId: row.draw_result_id, winnerWallet: row.winner_wallet, settlementBasis: String(row.settlement_basis), organizerFeeAccrued: String(row.organizer_fee_accrued), winnerAmount: String(row.winner_amount), carryInAmount: String(row.carry_in_amount), status: row.status, retryCount: row.retry_count, payoutIntent: intent.rowCount ? this.publicPayoutIntent(intent.rows[0]) : null, idempotent };
   }
-  publicPayoutIntent(row) { return { id: row.id, settlementId: row.settlement_id, winnerWallet: row.winner_wallet, winnerAmount: String(row.winner_amount), chainId: Number(row.chain_id), tokenAddress: row.token_address, senderWallet: row.sender_wallet, nonce: row.nonce === null ? null : String(row.nonce), transactionHash: row.transaction_hash, status: row.status, broadcastAt: row.broadcast_at, confirmedAt: row.confirmed_at, confirmedBlockNumber: row.confirmed_block_number, networkFeeWei: row.network_fee_wei === null ? null : String(row.network_fee_wei) }; }
+  publicPayoutIntent(row) { return { id: row.id, settlementId: row.settlement_id, winnerWallet: row.winner_wallet, winnerAmount: String(row.winner_amount), chainId: Number(row.chain_id), tokenAddress: row.token_address, senderWallet: row.sender_wallet, nonce: row.nonce === null ? null : String(row.nonce), transactionHash: row.transaction_hash, status: row.status, signerMode: row.signer_mode || null, signerRequestId: row.signer_request_id || null, broadcastAt: row.broadcast_at, confirmedAt: row.confirmed_at, confirmedBlockNumber: row.confirmed_block_number, networkFeeWei: row.network_fee_wei === null ? null : String(row.network_fee_wei) }; }
   async payoutIntent(settlementId) { const result = await this.pool.query('SELECT * FROM payout_intents WHERE settlement_id = $1', [settlementId]); if (!result.rowCount) throw new Error('Settlement has no payout intent.'); return { ...this.publicPayoutIntent(result.rows[0]), token_address: result.rows[0].token_address, signedTransaction: result.rows[0].signed_transaction }; }
   async preparePayout(settlementId, provider) {
     return this.transaction(async (db) => {
       await this.assertOperationalEnabled(db, 'payouts');
       const intent = await db.query('SELECT i.*, s.status AS settlement_status FROM payout_intents i JOIN settlements s ON s.id = i.settlement_id WHERE i.settlement_id = $1 FOR UPDATE', [settlementId]); if (!intent.rowCount) throw new Error('Settlement has no payout intent.'); const row = intent.rows[0];
-      if (row.status === 'confirmed' || row.status === 'broadcast' || row.signed_transaction) return { ...this.publicPayoutIntent(row), token_address: row.token_address, signedTransaction: row.signed_transaction };
+      if (row.status === 'confirmed' || row.status === 'broadcast' || row.status === 'broadcast_unknown' || row.status === 'manual_review' || row.signed_transaction) return { ...this.publicPayoutIntent(row), token_address: row.token_address, signedTransaction: row.signed_transaction };
       let signed;
       try { signed = await provider.signTransfer({ recipient: row.winner_wallet, amount: String(row.winner_amount) }); }
       catch (error) { const failureCode = error?.code === 'insufficient_test_token' || error?.code === 'insufficient_native_gas' ? error.code : 'signing_failed'; await db.query("UPDATE payout_intents SET status = 'retryable', failure_code = $1, updated_at = now() WHERE id = $2", [failureCode, row.id]); await db.query("UPDATE settlements SET status = 'retryable', retry_count = retry_count + 1, failure_code = $1, updated_at = now() WHERE id = $2", [failureCode, settlementId]); return { ...this.publicPayoutIntent({ ...row, status: 'retryable' }), token_address: row.token_address, signedTransaction: null }; }
@@ -255,11 +255,11 @@ class PostgresRepository {
     });
   }
   async executePayout(settlementId, provider) {
-    const prepared = await this.preparePayout(settlementId, provider); if (!prepared.signedTransaction || prepared.status === 'confirmed' || prepared.status === 'broadcast') return prepared;
+    const prepared = await this.preparePayout(settlementId, provider); if (!prepared.signedTransaction || ['confirmed', 'broadcast', 'broadcast_unknown', 'manual_review'].includes(prepared.status)) return prepared;
     return this.transaction(async (db) => {
-      const intent = await db.query('SELECT * FROM payout_intents WHERE settlement_id = $1 FOR UPDATE', [settlementId]); const row = intent.rows[0]; if (row.status === 'confirmed' || row.status === 'broadcast') return this.publicPayoutIntent(row);
+      const intent = await db.query('SELECT * FROM payout_intents WHERE settlement_id = $1 FOR UPDATE', [settlementId]); const row = intent.rows[0]; if (['confirmed', 'broadcast', 'broadcast_unknown', 'manual_review'].includes(row.status)) return this.publicPayoutIntent(row);
       try { await provider.recoverOrBroadcast({ ...this.publicPayoutIntent(row), token_address: row.token_address, signedTransaction: row.signed_transaction }); }
-      catch { await db.query("UPDATE payout_intents SET status = 'retryable', failure_code = 'broadcast_ambiguous', updated_at = now() WHERE id = $1", [row.id]); await db.query("UPDATE settlements SET status = 'retryable', retry_count = retry_count + 1, failure_code = 'broadcast_ambiguous', updated_at = now() WHERE id = $1", [settlementId]); const retry = await db.query('SELECT * FROM payout_intents WHERE id = $1', [row.id]); return this.publicPayoutIntent(retry.rows[0]); }
+      catch { await db.query("UPDATE payout_intents SET status = 'broadcast_unknown', failure_code = 'broadcast_ambiguous', updated_at = now() WHERE id = $1", [row.id]); await db.query("UPDATE settlements SET status = 'retryable', retry_count = retry_count + 1, failure_code = 'broadcast_ambiguous', updated_at = now() WHERE id = $1", [settlementId]); const retry = await db.query('SELECT * FROM payout_intents WHERE id = $1', [row.id]); return this.publicPayoutIntent(retry.rows[0]); }
       await db.query("UPDATE payout_intents SET status = 'broadcast', broadcast_at = COALESCE(broadcast_at, now()), failure_code = NULL, updated_at = now() WHERE id = $1", [row.id]); await db.query("UPDATE settlements SET status = 'broadcast', updated_at = now() WHERE id = $1", [settlementId]); await db.query("UPDATE rounds SET status = 'payout_broadcast', updated_at = now() WHERE id = (SELECT round_id FROM settlements WHERE id = $1)", [settlementId]); const saved = await db.query('SELECT * FROM payout_intents WHERE id = $1', [row.id]); return this.publicPayoutIntent(saved.rows[0]);
     });
   }
@@ -267,8 +267,18 @@ class PostgresRepository {
     if (!verification.confirmed) return this.settlementById(this.pool, settlementId, true);
     return this.transaction(async (db) => {
       const intent = await db.query('SELECT * FROM payout_intents WHERE settlement_id = $1 FOR UPDATE', [settlementId]); const row = intent.rows[0]; if (row.status === 'confirmed') return this.settlementById(db, settlementId, true);
-      if (row.status !== 'broadcast') throw new Error('Only a broadcast payout may be confirmed.');
+      if (!['broadcast', 'broadcast_unknown'].includes(row.status)) throw new Error('Only a broadcast payout may be confirmed.');
       await db.query("UPDATE payout_intents SET status = 'confirmed', confirmed_at = now(), confirmed_block_number = $1, network_fee_wei = $2, updated_at = now() WHERE id = $3", [verification.blockNumber, verification.networkFeeWei, row.id]); await db.query("UPDATE settlements SET status = 'confirmed', confirmed_at = now(), updated_at = now() WHERE id = $1", [settlementId]); await db.query("UPDATE rounds SET status = 'completed', updated_at = now() WHERE id = (SELECT round_id FROM settlements WHERE id = $1)", [settlementId]); return this.settlementById(db, settlementId, false);
+    });
+  }
+  async reconcilePayout(settlementId, provider) {
+    return this.transaction(async (db) => {
+      const result = await db.query('SELECT * FROM payout_intents WHERE settlement_id = $1 FOR UPDATE', [settlementId]); if (!result.rowCount) throw new Error('Settlement has no payout intent.'); const row = result.rows[0];
+      if (row.status !== 'broadcast_unknown') return this.publicPayoutIntent(row);
+      const reconciliation = await provider.reconcileUnknown({ ...this.publicPayoutIntent(row), token_address: row.token_address });
+      if (reconciliation.state === 'submitted_pending') await db.query("UPDATE payout_intents SET status = 'broadcast', failure_code = NULL, updated_at = now() WHERE id = $1", [row.id]);
+      else if (reconciliation.state === 'manual_review') await db.query("UPDATE payout_intents SET status = 'manual_review', failure_code = 'nonce_consumed_without_hash', updated_at = now() WHERE id = $1", [row.id]);
+      const saved = await db.query('SELECT * FROM payout_intents WHERE id = $1', [row.id]); return this.publicPayoutIntent(saved.rows[0]);
     });
   }
   async createOrder(data) {

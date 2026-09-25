@@ -17,21 +17,25 @@ class EthersTestnetPayoutProvider {
     const token = new ethers.Contract(this.token, TRANSFER_ABI, this.provider); if (Number(await token.decimals()) !== this.target.decimals) throw new PayoutPreflightError('wrong_token_decimals');
     return { sender: await this.wallet.getAddress(), chainId: this.target.chainId, token: this.token };
   }
-  async signTransfer({ recipient, amount }) {
-    const config = await this.validateNetworkAndToken(); const destination = ethers.getAddress(recipient); const value = BigInt(amount); if (value <= 0n) throw new Error('Payout amount must be positive.');
+  async identity() { const config = await this.validateNetworkAndToken(); return { address: config.sender, mode: 'local-or-staging-raw-key' }; }
+  async preflightTransfer({ recipient, amount, maxAmount, minGasBalanceWei, maxGasPriceWei }) {
+    const config = await this.validateNetworkAndToken(); const destination = ethers.getAddress(recipient); if (destination === ethers.ZeroAddress) throw new PayoutPreflightError('zero_recipient');
+    const value = BigInt(amount); if (value <= 0n) throw new PayoutPreflightError('invalid_amount'); if (maxAmount !== undefined && value > BigInt(maxAmount)) throw new PayoutPreflightError('payout_limit_exceeded');
     const iface = new ethers.Interface(TRANSFER_ABI); const data = iface.encodeFunctionData('transfer', [destination, value]);
+    const [nativeBalance, tokenBalance, nonceHex, feeData] = await Promise.all([this.provider.getBalance(config.sender), new ethers.Contract(this.token, TRANSFER_ABI, this.provider).balanceOf(config.sender), this.provider.send('eth_getTransactionCount', [config.sender, 'pending']), this.provider.getFeeData()]);
+    const gasPrice = feeData.gasPrice; if (gasPrice === null) throw new PayoutPreflightError('missing_gas_price'); if (maxGasPriceWei !== undefined && gasPrice > BigInt(maxGasPriceWei)) throw new PayoutPreflightError('gas_price_limit_exceeded');
+    if (tokenBalance < value) throw new PayoutPreflightError('insufficient_test_token'); const estimated = await this.provider.estimateGas({ from: config.sender, to: this.token, data }); const gasLimit = (estimated * 120n + 99n) / 100n;
+    if (minGasBalanceWei !== undefined && nativeBalance < BigInt(minGasBalanceWei)) throw new PayoutPreflightError('native_gas_reserve_low');
+    if (nativeBalance < gasLimit * gasPrice) throw new PayoutPreflightError('insufficient_native_gas');
+    return { ...config, recipient: destination, amount: value.toString(), nonce: Number(nonceHex), gasLimit: gasLimit.toString(), gasPrice: gasPrice.toString(), tokenBalance: tokenBalance.toString(), nativeBalance: nativeBalance.toString(), transaction: { chainId: this.target.chainId, nonce: Number(nonceHex), to: this.token, data, value: 0n, gasLimit, gasPrice } };
+  }
+  async signTransfer({ recipient, amount }) {
+    const config = await this.preflightTransfer({ recipient, amount });
     // JsonRpcProvider caches block-scoped reads. A payout signer must not reuse
     // that cached nonce after an immediately mined prior transfer, so query the
     // pending nonce directly from the node for every newly signed intent.
-    const [nativeBalance, tokenBalance, nonceHex, feeData] = await Promise.all([this.provider.getBalance(config.sender), new ethers.Contract(this.token, TRANSFER_ABI, this.provider).balanceOf(config.sender), this.provider.send('eth_getTransactionCount', [config.sender, 'pending']), this.provider.getFeeData()]);
-    const nonce = Number(nonceHex);
-    const gasPrice = feeData.gasPrice; if (gasPrice === null) throw new PayoutPreflightError('missing_gas_price');
-    if (tokenBalance < value) throw new PayoutPreflightError('insufficient_test_token');
-    const gasLimit = await this.provider.estimateGas({ from: config.sender, to: this.token, data });
-    if (nativeBalance < gasLimit * gasPrice) throw new PayoutPreflightError('insufficient_native_gas');
-    const transaction = { chainId: this.target.chainId, nonce, to: this.token, data, value: 0n, gasLimit, gasPrice };
-    const signedTransaction = await this.wallet.signTransaction(transaction); const hash = ethers.keccak256(signedTransaction);
-    return { ...config, recipient: destination, amount: value.toString(), nonce, gasLimit: gasLimit.toString(), gasPrice: gasPrice.toString(), signedTransaction, transactionHash: hash };
+    const signedTransaction = await this.wallet.signTransaction(config.transaction); const hash = ethers.keccak256(signedTransaction);
+    return { ...config, signedTransaction, transactionHash: hash };
   }
   async transactionByHash(transactionHash) {
     // Do not cache a just-missed transaction: recovery checks before broadcast
@@ -47,6 +51,13 @@ class EthersTestnetPayoutProvider {
       const afterError = await this.transactionByHash(intent.transactionHash); if (afterError) return { transactionHash: intent.transactionHash, state: 'submitted_pending', recovered: true };
       throw error;
     }
+  }
+  async reconcileUnknown(intent) {
+    const transaction = await this.transactionByHash(intent.transactionHash);
+    if (transaction) return { state: 'submitted_pending', transactionHash: intent.transactionHash, evidence: 'transaction_hash' };
+    const currentNonce = Number(await this.provider.send('eth_getTransactionCount', [intent.senderWallet || intent.sender_wallet, 'pending']));
+    if (intent.nonce !== null && intent.nonce !== undefined && currentNonce > Number(intent.nonce)) return { state: 'manual_review', evidence: 'nonce_consumed_without_hash' };
+    return { state: 'broadcast_unknown', evidence: 'no_provider_evidence' };
   }
   async verifyTransfer(intent, confirmations) {
     const network = await this.provider.getNetwork(); if (network.chainId !== BigInt(intent.chainId)) throw new Error('Payout verification is connected to the wrong network.');
