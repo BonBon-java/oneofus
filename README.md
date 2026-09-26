@@ -90,6 +90,10 @@ falls back to server or blockchain randomness.
 
 ## Settlement and payout
 
+The current two-leg, test-only pool settlement protocol is documented in
+[`docs/PAYOUT_ARCHITECTURE.md`](docs/PAYOUT_ARCHITECTURE.md). Production
+Arbitrum One execution remains disabled.
+
 Inbound payment monitoring currently targets **USDT on Arbitrum One** (chain ID
 `42161`, token `0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9`) via
 `ARBITRUM_RPC_URL`. This is mainnet configuration and is **not** used by payout

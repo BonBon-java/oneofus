@@ -17,6 +17,14 @@ test('never uses floating point for large settlement values', () => {
   assert.equal(BigInt(result.winnerAmount) + BigInt(result.organizerFee), BigInt(basis));
 });
 
+test('85/15 split preserves every USDT base unit for decimal edge cases', () => {
+  for (const amount of ['1000000', '3001200', '10000001', '99999999']) {
+    const split = settlementAmounts(amount);
+    assert.equal(BigInt(split.winnerAmount) + BigInt(split.organizerFee), BigInt(amount));
+    assert.equal(split.winnerAmount, (BigInt(amount) * 85n / 100n).toString());
+  }
+});
+
 test('settlement service keeps payout execution behind an injected provider', async () => {
   const calls = []; const repository = {
     createSettlement: async () => ({ id: 'settlement', winnerWallet: '0xwinner', idempotent: true }),
@@ -53,10 +61,12 @@ test('AWS KMS staging provider accepts no raw private key and rejects non-Sepoli
 
 test('payout target rejects disabled mode, mainnet, and production USDT before a provider exists', () => {
   const base = { ONE_OF_US_PAYOUT_MODE: 'testnet', ONE_OF_US_PAYOUT_RPC_URL: 'http://localhost:8545', ONE_OF_US_PAYOUT_CHAIN_ID: '31337', ONE_OF_US_PAYOUT_TOKEN_ADDRESS: '0x0000000000000000000000000000000000000001' };
-  assert.deepEqual(payoutTargetConfig(base), { mode: 'testnet', rpcUrl: base.ONE_OF_US_PAYOUT_RPC_URL, chainId: 31337, tokenAddress: base.ONE_OF_US_PAYOUT_TOKEN_ADDRESS, decimals: 6 });
+  assert.deepEqual(payoutTargetConfig(base), { mode: 'testnet', rpcUrl: base.ONE_OF_US_PAYOUT_RPC_URL, chainId: 31337, tokenAddress: base.ONE_OF_US_PAYOUT_TOKEN_ADDRESS, decimals: 6, poolAddress: null, treasuryAddress: null, payoutMode: 'disabled' });
   assert.throws(() => payoutTargetConfig({ ...base, ONE_OF_US_PAYOUT_MODE: 'mainnet' }), /disabled/);
   assert.throws(() => payoutTargetConfig({ ...base, ONE_OF_US_PAYOUT_CHAIN_ID: '42161' }), /approved test/);
   assert.throws(() => payoutTargetConfig({ ...base, ONE_OF_US_PAYOUT_TOKEN_ADDRESS: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9' }), /Production USDT/);
+  assert.throws(() => payoutTargetConfig({ ...base, PAYOUT_MODE: 'test' }), /POOL_WALLET_ADDRESS/);
+  assert.throws(() => payoutTargetConfig({ ...base, PAYOUT_MODE: 'production' }), /Only PAYOUT_MODE=test/);
 });
 
 test('payout token target requires exactly six integer decimal places', () => {
