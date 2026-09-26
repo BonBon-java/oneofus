@@ -64,8 +64,12 @@ The payout provider accepts only a configured USDT `transfer(recipient, amount)`
 from an immutable leg.  It has no arbitrary transaction or arbitrary token
 endpoint.  The present local/test implementation uses a server-only disposable
 key.  The existing AWS KMS secp256k1 adapter implements the same signer shape
-for Arbitrum Sepolia test use; replacing the test signer with a future KMS
-signer for the same production pool address does not change settlement logic.
+for Arbitrum Sepolia test use.  A KMS-created secp256k1 key normally has a new
+address: AWS KMS does not import an existing MetaMask private key.  Moving the
+pool to KMS therefore needs an explicitly approved transfer of funds to that
+new address; keeping the existing MetaMask address would require a separately
+reviewed isolated signer or custody solution.  Neither choice changes the
+settlement business logic.
 
 Production remains intentionally disabled.  Before enabling it separately,
 review the signer custody/migration procedure, configure the real Arbitrum One
