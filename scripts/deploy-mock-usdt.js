@@ -10,6 +10,7 @@ const RPC_URL = 'http://127.0.0.1:8545';
 // this ignored local integration environment, never by application defaults.
 const PAYOUT_PRIVATE_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
 const WINNER_PRIVATE_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d';
+const TREASURY_PRIVATE_KEY = '0x8b3a350cf5c34c9194ca3a545d3c8f8b14e5f7d7f3f0e0b2fd7b7fd1a1b2c3d4';
 
 function compile() {
   const source = fs.readFileSync(path.join(__dirname, '..', 'tests', 'fixtures', 'MockUSDT.sol'), 'utf8');
@@ -30,7 +31,7 @@ async function deployMockUsdt() {
   const token = await new ethers.ContractFactory(artifact.abi, `0x${artifact.evm.bytecode.object}`, signer).deploy();
   await token.waitForDeployment();
   await (await token.mint(await signer.getAddress(), 1_000_000_000_000n)).wait();
-  return { tokenAddress: await token.getAddress(), payoutPrivateKey: PAYOUT_PRIVATE_KEY, winnerAddress: await new ethers.Wallet(WINNER_PRIVATE_KEY).getAddress() };
+  return { tokenAddress: await token.getAddress(), payoutPrivateKey: PAYOUT_PRIVATE_KEY, poolAddress: await signer.getAddress(), winnerAddress: await new ethers.Wallet(WINNER_PRIVATE_KEY).getAddress(), treasuryAddress: await new ethers.Wallet(TREASURY_PRIVATE_KEY).getAddress() };
 }
 
 async function main() {
@@ -41,6 +42,7 @@ async function main() {
     'ONE_OF_US_PAYOUT_MODE=testnet', 'ONE_OF_US_PAYOUT_RPC_URL=http://127.0.0.1:8545', 'ONE_OF_US_PAYOUT_CHAIN_ID=31337',
     `ONE_OF_US_PAYOUT_TOKEN_ADDRESS=${deployed.tokenAddress}`, 'ONE_OF_US_PAYOUT_TOKEN_DECIMALS=6',
     `ONE_OF_US_PAYOUT_PRIVATE_KEY=${deployed.payoutPrivateKey}`, `PAYOUT_TEST_WINNER_ADDRESS=${deployed.winnerAddress}`,
+    `POOL_WALLET_ADDRESS=${deployed.poolAddress}`, `TREASURY_WALLET_ADDRESS=${deployed.treasuryAddress}`, 'PAYOUT_MODE=test',
     'PAYOUT_TEST_AMOUNT_UNITS=1000001', 'PAYMENT_CONFIRMATIONS=1', 'RUN_PAYOUT_INTEGRATION_TESTS=true', '',
   ].join('\n'), { mode: 0o600 });
   console.log(`MockUSDT deployed locally: ${deployed.tokenAddress}`);

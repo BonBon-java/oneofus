@@ -33,7 +33,7 @@ async function start() {
   const existingCode = existing?.ONE_OF_US_PAYOUT_TOKEN_ADDRESS ? await new ethers.JsonRpcProvider('http://127.0.0.1:8545').getCode(existing.ONE_OF_US_PAYOUT_TOKEN_ADDRESS) : '0x';
   if (existingCode === '0x') await deployMockUsdt().then(async (deployed) => {
     fs.writeFileSync(envFile, [
-      'DATABASE_URL=postgresql://oneofus:local-integration-only@127.0.0.1:5434/oneofus_integration', 'ONE_OF_US_PAYOUT_MODE=testnet', 'ONE_OF_US_PAYOUT_RPC_URL=http://127.0.0.1:8545', 'ONE_OF_US_PAYOUT_CHAIN_ID=31337', `ONE_OF_US_PAYOUT_TOKEN_ADDRESS=${deployed.tokenAddress}`, 'ONE_OF_US_PAYOUT_TOKEN_DECIMALS=6', `ONE_OF_US_PAYOUT_PRIVATE_KEY=${deployed.payoutPrivateKey}`, `PAYOUT_TEST_WINNER_ADDRESS=${deployed.winnerAddress}`, 'PAYOUT_TEST_AMOUNT_UNITS=1000001', 'PAYMENT_CONFIRMATIONS=1', 'RUN_PAYOUT_INTEGRATION_TESTS=true', '',
+      'DATABASE_URL=postgresql://oneofus:local-integration-only@127.0.0.1:5434/oneofus_integration', 'ONE_OF_US_PAYOUT_MODE=testnet', 'ONE_OF_US_PAYOUT_RPC_URL=http://127.0.0.1:8545', 'ONE_OF_US_PAYOUT_CHAIN_ID=31337', `ONE_OF_US_PAYOUT_TOKEN_ADDRESS=${deployed.tokenAddress}`, 'ONE_OF_US_PAYOUT_TOKEN_DECIMALS=6', `ONE_OF_US_PAYOUT_PRIVATE_KEY=${deployed.payoutPrivateKey}`, `PAYOUT_TEST_WINNER_ADDRESS=${deployed.winnerAddress}`, `POOL_WALLET_ADDRESS=${deployed.poolAddress}`, `TREASURY_WALLET_ADDRESS=${deployed.treasuryAddress}`, 'PAYOUT_MODE=test', 'PAYOUT_TEST_AMOUNT_UNITS=1000001', 'PAYMENT_CONFIRMATIONS=1', 'RUN_PAYOUT_INTEGRATION_TESTS=true', '',
     ].join('\n'), { mode: 0o600 });
     console.log(`MockUSDT deployed locally: ${deployed.tokenAddress}`);
   });
@@ -43,6 +43,9 @@ async function start() {
     // deterministic test credentials already generated for this chain.
     existing.DATABASE_URL = 'postgresql://oneofus:local-integration-only@127.0.0.1:5434/oneofus_integration';
     existing.PAYOUT_TEST_WINNER_ADDRESS = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
+    existing.POOL_WALLET_ADDRESS = new ethers.Wallet(existing.ONE_OF_US_PAYOUT_PRIVATE_KEY).address;
+    existing.TREASURY_WALLET_ADDRESS = new ethers.Wallet('0x8b3a350cf5c34c9194ca3a545d3c8f8b14e5f7d7f3f0e0b2fd7b7fd1a1b2c3d4').address;
+    existing.PAYOUT_MODE = 'test';
     fs.writeFileSync(envFile, `${Object.entries(existing).map(([key, value]) => `${key}=${value}`).join('\n')}\n`, { mode: 0o600 });
   }
   const integrationEnv = Object.fromEntries(fs.readFileSync(envFile, 'utf8').split('\n').filter(Boolean).map((line) => line.split(/=(.*)/s).slice(0, 2)));

@@ -27,11 +27,16 @@ class RoundLifecycleOrchestrator {
         else if (round.status === 'locked') { await this.snapshotService.createDrawSnapshot(roundId); action = 'SNAPSHOT_CREATED'; }
         else if (round.status === 'waiting_for_randomness') { await this.drandService.resolveWinner(roundId); action = 'WINNER_SELECTED'; }
         else if (round.status === 'winner_selected') { await this.settlementService.createSettlement(roundId); action = 'SETTLEMENT_CREATED'; }
-        else if (round.status === 'settlement_pending' || round.status === 'payout_retryable') { const settlementId = await this.repository.settlementForRound(roundId); if (!settlementId) { await this.settlementService.createSettlement(roundId); action = 'SETTLEMENT_CREATED'; } else { const intent = await this.settlementService.executePayout(settlementId); action = intent.status === 'broadcast' ? 'PAYOUT_BROADCAST' : 'PAYOUT_RETRY'; } }
-        else if (round.status === 'payout_broadcast') { const settlementId = await this.repository.settlementForRound(roundId); const settlement = await this.settlementService.confirmPayout(settlementId); action = settlement.status === 'confirmed' ? 'ROUND_COMPLETED' : 'PAYOUT_CONFIRMING'; }
+        else if (round.status === 'settlement_pending' || round.status === 'payout_retryable') { const settlementId = await this.repository.settlementForRound(roundId); if (!settlementId) { await this.settlementService.createSettlement(roundId); action = 'SETTLEMENT_CREATED'; } else { const intent = await this.settlementService.executePayout(settlementId); action = ['broadcast', 'winner_submitted', 'treasury_submitted'].includes(intent.status) ? 'PAYOUT_BROADCAST' : 'PAYOUT_RETRY'; } }
+        else if (round.status === 'payout_broadcast') {
+          const settlementId = await this.repository.settlementForRound(roundId); if (!this.repository.getSettlement) { const confirmed = await this.settlementService.confirmPayout(settlementId); action = confirmed.status === 'confirmed' ? 'ROUND_COMPLETED' : 'PAYOUT_CONFIRMING'; round = await this.repository.roundById(roundId); continue; } const settlement = await this.repository.getSettlement(settlementId);
+          if (['winner_submitted', 'treasury_submitted'].includes(settlement.status)) { const confirmed = await this.settlementService.confirmPayout(settlementId); action = confirmed.status === 'settled' ? 'ROUND_COMPLETED' : 'PAYOUT_CONFIRMING'; }
+          else if (settlement.status === 'settled') action = 'ROUND_COMPLETED';
+          else { const advanced = await this.settlementService.executePayout(settlementId); action = advanced.status === 'treasury_submitted' ? 'TREASURY_BROADCAST' : 'PAYOUT_RETRY'; }
+        }
         else break;
         round = await this.repository.roundById(roundId); this.log(action, { roundId, previousState, resultingState: round.status });
-        if (action === 'PAYOUT_CONFIRMING' || action === 'PAYOUT_RETRY') break;
+        if (action === 'PAYOUT_RETRY') break;
       }
       await this.repository.recordLifecycleSuccess(roundId, this.workerId, action); return { roundId, action, status: round.status };
     } catch (error) {

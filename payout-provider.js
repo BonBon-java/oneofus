@@ -16,9 +16,12 @@ class EthersTestnetPayoutProvider {
     const network = await this.provider.getNetwork(); if (network.chainId !== BigInt(this.target.chainId)) throw new PayoutPreflightError('wrong_chain');
     const code = await this.provider.getCode(this.token); if (code === '0x') throw new PayoutPreflightError('missing_test_token_code');
     const token = new ethers.Contract(this.token, TRANSFER_ABI, this.provider); if (Number(await token.decimals()) !== this.target.decimals) throw new PayoutPreflightError('wrong_token_decimals');
-    return { sender: await this.wallet.getAddress(), chainId: this.target.chainId, token: this.token };
+    const sender = ethers.getAddress(await this.wallet.getAddress());
+    if (this.target.poolAddress && sender !== ethers.getAddress(this.target.poolAddress)) throw new PayoutPreflightError('pool_signer_mismatch');
+    return { sender, chainId: this.target.chainId, token: this.token };
   }
   async identity() { const config = await this.validateNetworkAndToken(); return { address: config.sender, mode: 'local-or-staging-raw-key' }; }
+  async poolBalances() { const config = await this.validateNetworkAndToken(); const tokenBalance = await new ethers.Contract(this.token, TRANSFER_ABI, this.provider).balanceOf(config.sender); const nativeBalance = await this.provider.getBalance(config.sender); return { poolWallet: config.sender, usdtBaseUnits: tokenBalance.toString(), ethWei: nativeBalance.toString() }; }
   async preflightTransfer({ recipient, amount, maxAmount, minGasBalanceWei, maxGasPriceWei }) {
     const config = await this.validateNetworkAndToken(); const destination = ethers.getAddress(recipient); if (destination === ethers.ZeroAddress) throw new PayoutPreflightError('zero_recipient');
     const value = BigInt(amount); if (value <= 0n) throw new PayoutPreflightError('invalid_amount'); if (maxAmount !== undefined && value > BigInt(maxAmount)) throw new PayoutPreflightError('payout_limit_exceeded');
@@ -29,6 +32,32 @@ class EthersTestnetPayoutProvider {
     if (minGasBalanceWei !== undefined && nativeBalance < BigInt(minGasBalanceWei)) throw new PayoutPreflightError('native_gas_reserve_low');
     if (nativeBalance < gasLimit * gasPrice) throw new PayoutPreflightError('insufficient_native_gas');
     return { ...config, recipient: destination, amount: value.toString(), nonce: Number(nonceHex), gasLimit: gasLimit.toString(), gasPrice: gasPrice.toString(), tokenBalance: tokenBalance.toString(), nativeBalance: nativeBalance.toString(), transaction: { chainId: this.target.chainId, nonce: Number(nonceHex), to: this.token, data, value: 0n, gasLimit, gasPrice } };
+  }
+  async preflightTransfers(transfers, { minGasBalanceWei, safetyMarginWei = 0n } = {}) {
+    if (!Array.isArray(transfers) || transfers.length !== 2) throw new PayoutPreflightError('two_transfers_required');
+    const config = await this.validateNetworkAndToken();
+    const token = new ethers.Contract(this.token, TRANSFER_ABI, this.provider);
+    const feeData = await this.provider.getFeeData(); const gasPrice = feeData.gasPrice;
+    if (gasPrice === null) throw new PayoutPreflightError('missing_gas_price');
+    const nonce = Number(await this.provider.send('eth_getTransactionCount', [config.sender, 'pending']));
+    const normalized = transfers.map(({ recipient, amount }, index) => {
+      const destination = ethers.getAddress(recipient); const value = BigInt(amount);
+      if (destination === ethers.ZeroAddress || value <= 0n) throw new PayoutPreflightError('invalid_transfer');
+      const data = new ethers.Interface(TRANSFER_ABI).encodeFunctionData('transfer', [destination, value]);
+      return { recipient: destination, amount: value.toString(), data, nonce: nonce + index };
+    });
+    const [nativeBalance, tokenBalance, estimates] = await Promise.all([
+      this.provider.getBalance(config.sender), token.balanceOf(config.sender),
+      Promise.all(normalized.map((entry) => this.provider.estimateGas({ from: config.sender, to: this.token, data: entry.data })))
+    ]);
+    const requiredToken = normalized.reduce((sum, entry) => sum + BigInt(entry.amount), 0n);
+    if (tokenBalance < requiredToken) throw new PayoutPreflightError('insufficient_test_token');
+    const gasLimits = estimates.map((estimated) => (estimated * 120n + 99n) / 100n);
+    const estimatedGasWei = gasLimits.reduce((sum, limit) => sum + limit * gasPrice, 0n);
+    const requiredNative = estimatedGasWei + BigInt(safetyMarginWei);
+    if (minGasBalanceWei !== undefined && nativeBalance < BigInt(minGasBalanceWei)) throw new PayoutPreflightError('native_gas_reserve_low');
+    if (nativeBalance < requiredNative) throw new PayoutPreflightError('insufficient_native_gas');
+    return { ...config, tokenBalance: tokenBalance.toString(), nativeBalance: nativeBalance.toString(), gasPrice: gasPrice.toString(), estimatedGasWei: estimatedGasWei.toString(), requiredToken: requiredToken.toString(), transfers: normalized.map((entry, index) => ({ ...entry, gasLimit: gasLimits[index].toString(), transaction: { chainId: this.target.chainId, nonce: entry.nonce, to: this.token, data: entry.data, value: 0n, gasLimit: gasLimits[index], gasPrice } })) };
   }
   async signTransfer({ recipient, amount }) {
     const config = await this.preflightTransfer({ recipient, amount });
@@ -64,7 +93,7 @@ class EthersTestnetPayoutProvider {
     const network = await this.provider.getNetwork(); if (network.chainId !== BigInt(intent.chainId)) throw new Error('Payout verification is connected to the wrong network.');
     const receipt = await this.provider.getTransactionReceipt(intent.transactionHash); if (!receipt) return { confirmed: false, state: 'not_confirmed' };
     if (receipt.status !== 1) throw new Error('Payout transaction reverted on-chain.');
-    const tokenAddress = intent.tokenAddress || intent.token_address; const recipient = intent.winnerWallet || intent.winner_wallet; const amount = intent.winnerAmount || intent.winner_amount; const sender = intent.senderWallet || intent.sender_wallet;
+    const tokenAddress = intent.tokenAddress || intent.token_address; const recipient = intent.recipientWallet || intent.recipient_wallet || intent.winnerWallet || intent.winner_wallet; const amount = intent.amount || intent.winnerAmount || intent.winner_amount; const sender = intent.senderWallet || intent.sender_wallet;
     const transaction = await this.transactionByHash(intent.transactionHash); if (!transaction || ethers.getAddress(transaction.to) !== ethers.getAddress(tokenAddress)) throw new Error('Payout transaction token contract does not match its intent.');
     const iface = new ethers.Interface(TRANSFER_ABI); const expectedRecipient = ethers.getAddress(recipient); const expectedAmount = BigInt(amount); const matched = receipt.logs.some((log) => {
       if (ethers.getAddress(log.address) !== ethers.getAddress(tokenAddress)) return false;
@@ -72,7 +101,8 @@ class EthersTestnetPayoutProvider {
     });
     if (!matched) throw new Error('Payout transaction does not contain the expected MockUSDT transfer.');
     const head = typeof this.provider.send === 'function' ? Number(await this.provider.send('eth_blockNumber', [])) : await this.provider.getBlockNumber(); if (head - receipt.blockNumber + 1 < confirmations) return { confirmed: false, state: 'submitted_pending' };
-    return { confirmed: true, state: 'confirmed', blockNumber: receipt.blockNumber, networkFeeWei: (receipt.gasUsed * receipt.gasPrice).toString() };
+    const effectiveGasPrice = receipt.gasPrice ?? receipt.effectiveGasPrice;
+    return { confirmed: true, state: 'confirmed', blockNumber: receipt.blockNumber, gasUsed: receipt.gasUsed.toString(), effectiveGasPrice: effectiveGasPrice.toString(), networkFeeWei: (receipt.gasUsed * effectiveGasPrice).toString() };
   }
 }
 

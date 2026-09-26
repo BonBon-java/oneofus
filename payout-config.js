@@ -35,7 +35,16 @@ function payoutTargetConfig(env = process.env) {
   if (tokenAddress.toLowerCase() === USDT_TOKEN_ADDRESS.toLowerCase()) throw new Error('Production USDT is never an allowed payout token in testnet mode.');
   const decimals = env.ONE_OF_US_PAYOUT_TOKEN_DECIMALS === undefined ? USDT_DECIMALS : Number(env.ONE_OF_US_PAYOUT_TOKEN_DECIMALS);
   if (decimals !== USDT_DECIMALS) throw new Error(`Test payout token must use ${USDT_DECIMALS} decimals.`);
-  return { mode: 'testnet', rpcUrl: env.ONE_OF_US_PAYOUT_RPC_URL, chainId, tokenAddress, decimals };
+  const poolAddress = env.POOL_WALLET_ADDRESS ? ethers.getAddress(env.POOL_WALLET_ADDRESS) : null;
+  const treasuryAddress = env.TREASURY_WALLET_ADDRESS ? ethers.getAddress(env.TREASURY_WALLET_ADDRESS) : null;
+  if (poolAddress === ethers.ZeroAddress) throw new Error('POOL_WALLET_ADDRESS must not be the zero address.');
+  if (treasuryAddress === ethers.ZeroAddress) throw new Error('TREASURY_WALLET_ADDRESS must not be the zero address.');
+  // A transfer-capable test configuration is deliberately explicit. This keeps
+  // existing read-only/local development fail-closed while requiring the same
+  // pool/treasury model that production will use.
+  if (env.PAYOUT_MODE === 'test' && (!poolAddress || !treasuryAddress)) throw new Error('POOL_WALLET_ADDRESS and TREASURY_WALLET_ADDRESS are required for PAYOUT_MODE=test.');
+  if (env.PAYOUT_MODE && env.PAYOUT_MODE !== 'test') throw new Error('Only PAYOUT_MODE=test is permitted by this build. Production payout remains disabled.');
+  return { mode: 'testnet', rpcUrl: env.ONE_OF_US_PAYOUT_RPC_URL, chainId, tokenAddress, decimals, poolAddress, treasuryAddress, payoutMode: env.PAYOUT_MODE || 'disabled' };
 }
 
 function stagingKmsSignerConfig(env = process.env) {
