@@ -18,7 +18,7 @@ test('never uses floating point for large settlement values', () => {
 });
 
 test('85/15 split preserves every USDT base unit for decimal edge cases', () => {
-  for (const amount of ['1000000', '3001200', '10000001', '99999999']) {
+  for (const amount of ['2', '1000000', '3001200', '10000001', '99999999', (2n ** 70n + 1234567n).toString()]) {
     const split = settlementAmounts(amount);
     assert.equal(BigInt(split.winnerAmount) + BigInt(split.organizerFee), BigInt(amount));
     assert.equal(split.winnerAmount, (BigInt(amount) * 85n / 100n).toString());
