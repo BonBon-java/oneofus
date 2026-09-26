@@ -273,7 +273,7 @@ class PostgresRepository {
       // A known submitted hash must be reconciled/confirmed before any fresh
       // balance decision. Its token transfer may already be mined even when a
       // worker crashed before persisting the confirmation.
-      if (legs.rows.some((leg) => ['broadcast', 'broadcast_unknown', 'manual_review'].includes(leg.status))) return this.settlementById(db, settlementId, true);
+      if (legs.rows.some((leg) => ['signed', 'broadcast', 'broadcast_unknown', 'manual_review'].includes(leg.status))) return this.settlementById(db, settlementId, true);
       try {
         const preflight = await provider.preflightTransfers(legs.rows.map((leg) => ({ recipient: leg.recipient_wallet, amount: String(leg.amount) })));
         await db.query("UPDATE settlements SET status='preparing', gas_balance_wei=$1, failure_code=NULL, failure_message=NULL, updated_at=now() WHERE id=$2", [preflight.nativeBalance, settlementId]);
@@ -287,8 +287,13 @@ class PostgresRepository {
   }
   async executeNextSettlementLeg(settlementId, provider) {
     const prepared = await this.prepareTwoLegSettlement(settlementId, provider);
-    if (['blocked', 'settled'].includes(prepared.status)) return prepared;
-    return this.transaction(async (db) => {
+    if (prepared.status === 'settled') return prepared;
+    // Before the winner is confirmed, a failed all-legs preflight must stop
+    // everything. Afterwards only the already-created treasury obligation may
+    // be retried (with the exact persisted winner leg left untouched).
+    const preparedWinner = prepared.legs.find((leg) => leg.kind === 'winner_payout');
+    if (prepared.status === 'blocked' && preparedWinner?.status !== 'confirmed') return prepared;
+    const preparedLeg = await this.transaction(async (db) => {
       const legs = await db.query("SELECT * FROM settlement_legs WHERE settlement_id=$1 ORDER BY CASE kind WHEN 'winner_payout' THEN 1 ELSE 2 END FOR UPDATE", [settlementId]);
       const winner = legs.rows[0]; const treasury = legs.rows[1];
       const leg = winner.status === 'confirmed' ? treasury : winner;
@@ -300,12 +305,31 @@ class PostgresRepository {
       else try { signed = await provider.signTransfer({ recipient: leg.recipient_wallet, amount: String(leg.amount) }); }
       catch (error) { const code = error?.code || 'signing_failed'; await db.query('UPDATE settlement_legs SET status=$1, failure_code=$2, failure_message=$3, updated_at=now() WHERE id=$4', [['insufficient_test_token', 'insufficient_native_gas'].includes(code) ? 'failed' : 'pending', code, String(error.message || code).slice(0, 1000), leg.id]); await db.query("UPDATE settlements SET status=$1, failure_code=$2, retry_count=retry_count+1, updated_at=now() WHERE id=$3", [['insufficient_test_token', 'insufficient_native_gas'].includes(code) ? 'blocked' : 'retryable', code, settlementId]); return this.settlementById(db, settlementId, false); }
       if (Number(signed.chainId) !== Number(leg.chain_id) || signed.token.toLowerCase() !== leg.token_address || signed.recipient.toLowerCase() !== leg.recipient_wallet.toLowerCase() || String(signed.amount) !== String(leg.amount)) throw new Error('Payout signer produced a transaction that differs from its immutable settlement leg.');
+      // Commit this recovery record before the network request. If a process
+      // dies during broadcast, a later worker can only recover/rebroadcast this
+      // exact payload and hash; it can never create a second winner transfer.
       await db.query("UPDATE settlement_legs SET sender_wallet=$1,nonce=$2,gas_limit=$3,gas_price=$4,signed_transaction=$5,transaction_hash=$6,status='signed',failure_code=NULL,failure_message=NULL,updated_at=now() WHERE id=$7", [signed.sender, signed.nonce, signed.gasLimit, signed.gasPrice, signed.signedTransaction, signed.transactionHash, leg.id]);
-      try { await provider.recoverOrBroadcast({ ...this.publicSettlementLeg({ ...leg, ...{ sender_wallet: signed.sender, nonce: signed.nonce, gas_limit: signed.gasLimit, gas_price: signed.gasPrice, signed_transaction: signed.signedTransaction, transaction_hash: signed.transactionHash } }) }); }
-      catch { await db.query("UPDATE settlement_legs SET status='broadcast_unknown',failure_code='broadcast_ambiguous',updated_at=now() WHERE id=$1", [leg.id]); await db.query("UPDATE settlements SET status='retryable',failure_code='broadcast_ambiguous',retry_count=retry_count+1,updated_at=now() WHERE id=$1", [settlementId]); return this.settlementById(db, settlementId, false); }
-      await db.query("UPDATE settlement_legs SET status='broadcast',broadcast_at=COALESCE(broadcast_at,now()),updated_at=now() WHERE id=$1", [leg.id]);
-      await db.query('UPDATE settlements SET status=$1,updated_at=now() WHERE id=$2', [leg.kind === 'winner_payout' ? 'winner_submitted' : 'treasury_submitted', settlementId]);
-      await db.query("UPDATE rounds SET status='payout_broadcast',updated_at=now() WHERE id=(SELECT round_id FROM settlements WHERE id=$1)", [settlementId]); return this.settlementById(db, settlementId, false);
+      return { leg: this.publicSettlementLeg({ ...leg, sender_wallet: signed.sender, nonce: signed.nonce, gas_limit: signed.gasLimit, gas_price: signed.gasPrice, signed_transaction: signed.signedTransaction, transaction_hash: signed.transactionHash, status: 'signed' }) };
+    });
+    if (!preparedLeg.leg) return preparedLeg;
+    try { await provider.recoverOrBroadcast(preparedLeg.leg); }
+    catch {
+      // Keep the committed signed state. Retrying this exact raw transaction is
+      // safe even if the previous broadcast reached the node but its response
+      // was lost; using broadcast_unknown here would otherwise strand it.
+      return this.transaction(async (db) => {
+        await db.query("UPDATE settlement_legs SET status='signed',failure_code='broadcast_ambiguous',updated_at=now() WHERE id=$1 AND status='signed'", [preparedLeg.leg.id]);
+        await db.query("UPDATE settlements SET status='retryable',failure_code='broadcast_ambiguous',retry_count=retry_count+1,updated_at=now() WHERE id=$1", [settlementId]);
+        return this.settlementById(db, settlementId, false);
+      });
+    }
+    return this.transaction(async (db) => {
+      const leg = await db.query("SELECT * FROM settlement_legs WHERE id=$1 FOR UPDATE", [preparedLeg.leg.id]);
+      if (!leg.rowCount || leg.rows[0].transaction_hash !== preparedLeg.leg.transactionHash) return this.settlementById(db, settlementId, true);
+      await db.query("UPDATE settlement_legs SET status='broadcast',broadcast_at=COALESCE(broadcast_at,now()),failure_code=NULL,failure_message=NULL,updated_at=now() WHERE id=$1 AND status='signed'", [preparedLeg.leg.id]);
+      await db.query('UPDATE settlements SET status=$1,updated_at=now() WHERE id=$2', [preparedLeg.leg.kind === 'winner_payout' ? 'winner_submitted' : 'treasury_submitted', settlementId]);
+      await db.query("UPDATE rounds SET status='payout_broadcast',updated_at=now() WHERE id=(SELECT round_id FROM settlements WHERE id=$1)", [settlementId]);
+      return this.settlementById(db, settlementId, false);
     });
   }
   async confirmNextSettlementLeg(settlementId, verification) {
